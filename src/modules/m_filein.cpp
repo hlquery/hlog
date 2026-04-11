@@ -34,7 +34,6 @@
 
 #include "common/options.h"
 #include "core/hlcore.h"
-#include "core/logmanager.h"
 #include "core/pipeline.h"
 #include "core/pipeline.h"
 
@@ -159,7 +158,7 @@ bool ReopenFile(FileState& state, bool initialOpen)
 
 /* Drain any newly appended lines into the pipeline. */
 
-void DrainFile(FileState& state, const Pipeline& pipeline, LogManager* logs)
+void DrainFile(FileState& state, const Pipeline& pipeline)
 {
      if (!state.Stream.is_open())
      {
@@ -172,7 +171,7 @@ void DrainFile(FileState& state, const Pipeline& pipeline, LogManager* logs)
      std::string chunk;
      while (std::getline(state.Stream, chunk))
      {
-          pipeline.ProcessLine(state, state.Pending + chunk, logs);
+          pipeline.ProcessLine(state, state.Pending + chunk);
           state.Pending.clear();
      }
 
@@ -194,7 +193,7 @@ void DrainFile(FileState& state, const Pipeline& pipeline, LogManager* logs)
 
 /* Detect file changes and resynchronize the stream before reading. */
 
-void CheckAndRead(FileState& state, const Pipeline& pipeline, LogManager* logs)
+void CheckAndRead(FileState& state, const Pipeline& pipeline)
 {
      struct stat st;
      if (::stat(state.PathValue.c_str(), &st) != 0)
@@ -228,7 +227,7 @@ void CheckAndRead(FileState& state, const Pipeline& pipeline, LogManager* logs)
      }
 
      RefreshFileMetadata(state);
-     DrainFile(state, pipeline, logs);
+     DrainFile(state, pipeline);
 }
 
 /* Map auto mode onto the best available backend for the platform. */
@@ -253,8 +252,8 @@ class InotifyWatcher
    public:
      /* Watch parent directories and dispatch file changes back to states. */
 
-     explicit InotifyWatcher(std::vector<FileState>& states, const Pipeline& pipeline, LogManager* logs)
-         : States(states), PipelineRef(pipeline), Logs(logs)
+     explicit InotifyWatcher(std::vector<FileState>& states, const Pipeline& pipeline)
+         : States(states), PipelineRef(pipeline)
      {
           Fd = inotify_init1(IN_NONBLOCK);
           if (Fd < 0)
@@ -313,7 +312,7 @@ class InotifyWatcher
                {
                     for (auto& state : States)
                     {
-                         CheckAndRead(state, PipelineRef, Logs);
+                         CheckAndRead(state, PipelineRef);
                     }
                     continue;
                }
@@ -337,7 +336,7 @@ class InotifyWatcher
                               if (state.ParentDir == dirIt->second &&
                                   (changedName.empty() || changedName == state.PathValue.filename().string()))
                               {
-                                   CheckAndRead(state, PipelineRef, Logs);
+                                   CheckAndRead(state, PipelineRef);
                               }
                          }
                     }
@@ -349,7 +348,6 @@ class InotifyWatcher
    private:
      std::vector<FileState>& States;
      const Pipeline& PipelineRef;
-     LogManager* Logs = nullptr;
      int Fd = -1;
      std::unordered_map<std::string, int> WatchByDir;
      std::unordered_map<int, std::string> DirByWatch;
@@ -358,13 +356,13 @@ class InotifyWatcher
 
 /* Fallback polling loop used on non-Linux systems and refresh mode. */
 
-void RunPollLoop(std::vector<FileState>& states, const Pipeline& pipeline, int intervalMs, LogManager* logs)
+void RunPollLoop(std::vector<FileState>& states, const Pipeline& pipeline, int intervalMs)
 {
      while (Running)
      {
           for (auto& state : states)
           {
-               CheckAndRead(state, pipeline, logs);
+               CheckAndRead(state, pipeline);
           }
 
           std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs));
@@ -469,7 +467,7 @@ class FileInputModule final : public HLogModule
           return true;
      }
 
-     bool Run(const Pipeline& pipeline, WatchMode mode, int intervalMs, LogManager* logs, std::string& errorMessage) override
+     bool Run(const Pipeline& pipeline, WatchMode mode, int intervalMs, std::string& errorMessage) override
      {
           Running = 1;
           std::signal(SIGINT, HandleSignal);
@@ -512,13 +510,13 @@ class FileInputModule final : public HLogModule
                {
                     /* Use inotify when available so tailing reacts immediately. */
 
-                    InotifyWatcher watcher(States, pipeline, logs);
+                    InotifyWatcher watcher(States, pipeline);
                     watcher.Run(intervalMs);
                     return true;
                }
 #endif
 
-               RunPollLoop(States, pipeline, intervalMs, logs);
+               RunPollLoop(States, pipeline, intervalMs);
                return true;
           }
           catch (const std::exception& ex)

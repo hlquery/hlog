@@ -209,7 +209,7 @@ class DebugModule final : public HLogModule
 {
    public:
      DebugModule() : HLogModule("debug") {}
-     void ProcessEvent(PipelineEvent& event, const FileState& state, LogManager*) override;
+     void ProcessEvent(PipelineEvent& event, const FileState& state) override;
 };
 
 MODULE_LOAD(DebugModule)

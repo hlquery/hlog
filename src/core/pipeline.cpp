@@ -38,12 +38,18 @@
 #include <unistd.h>
 #endif
 
+#include "core/hlcore.h"
 #include "core/logmanager.h"
 #include "core/modulemanager.h"
 #include "utils/tools.h"
 
 namespace
 {
+
+LogManager* GetPipelineLogger()
+{
+     return (Instance && Instance->Logs) ? Instance->Logs.get() : nullptr;
+}
 
 bool IsForegroundOutputEnabled()
 {
@@ -486,12 +492,12 @@ class Pipeline::AsyncHlqueryOutput
 {
    public:
      AsyncHlqueryOutput(HlqueryOutputConfig config, EventConfig eventConfig,
-                        std::vector<AddFieldFilterConfig> addFieldFilters, LogManager* logs,
+                        std::vector<AddFieldFilterConfig> addFieldFilters,
                         std::shared_ptr<FailureRecorder> failureRecorder)
          : Output(std::move(config), std::move(eventConfig), std::move(addFieldFilters)),
-           Logs(logs),
            Recorder(std::move(failureRecorder))
      {
+          LogManager* logs = GetPipelineLogger();
           if (!Output.Enabled())
           {
                return;
@@ -500,18 +506,18 @@ class Pipeline::AsyncHlqueryOutput
           try
           {
                Output.EnsureCollection();
-               if (Logs)
+               if (logs)
                {
-                    Logs->Normal("output_hlquery",
+                    logs->Normal("output_hlquery",
                                  "ready collection=" + Output.GetConfig().Collection +
                                       " endpoint=" + Output.GetConfig().Endpoint);
                }
           }
           catch (const std::exception& e)
           {
-               if (Logs)
+               if (logs)
                {
-                    Logs->Normal("output_hlquery",
+                    logs->Normal("output_hlquery",
                                  "startup_collection_check_failed collection=" + Output.GetConfig().Collection +
                                       " endpoint=" + Output.GetConfig().Endpoint +
                                       " error=" + std::string(e.what()));
@@ -680,9 +686,10 @@ class Pipeline::AsyncHlqueryOutput
                std::string error;
                if (!Output.Emit(eventToEmit, &error))
                {
-                    if (Logs)
+                    LogManager* logs = GetPipelineLogger();
+                    if (logs)
                     {
-                         Logs->Critical("output_hlquery",
+                         logs->Critical("output_hlquery",
                                         "collection=" + Output.GetConfig().Collection +
                                              " endpoint=" + Output.GetConfig().Endpoint +
                                              " error=" + error);
@@ -692,9 +699,10 @@ class Pipeline::AsyncHlqueryOutput
                          for (const auto& queued : batch)
                          {
                               Recorder->Record(queued.Event.RawLine, queued.FilePath);
-                              if (Logs)
+                              logs = GetPipelineLogger();
+                              if (logs)
                               {
-                                   Logs->Sparse("failure_buffer",
+                                   logs->Sparse("failure_buffer",
                                                 "appended line path=" + queued.FilePath + " buffer=" + Recorder->GetPath().string());
                               }
                          }
@@ -706,7 +714,6 @@ class Pipeline::AsyncHlqueryOutput
      }
 
      HlqueryHttpOutput Output;
-     LogManager* Logs = nullptr;
      std::thread Worker;
      mutable std::deque<QueuedEvent> Queue;
      mutable std::mutex Mutex;
@@ -715,17 +722,17 @@ class Pipeline::AsyncHlqueryOutput
      std::shared_ptr<FailureRecorder> Recorder;
 };
 
-Pipeline::Pipeline(PipelineConfig config, LogManager* logs)
+Pipeline::Pipeline(PipelineConfig config)
     : Config(std::move(config)),
       FailureRecorderPtr(Config.FailureBufferEnabled && !Config.FailureBufferPath.empty()
                              ? std::make_shared<FailureRecorder>(fs::path(Config.FailureBufferPath))
                              : nullptr),
       ModuleManager(std::make_unique<HLogModuleManager>()),
       HlqueryOutput(std::make_unique<AsyncHlqueryOutput>(
-           Config.HlqueryOutput, Config.Event, Config.AddFieldFilters, logs, FailureRecorderPtr))
+           Config.HlqueryOutput, Config.Event, Config.AddFieldFilters, FailureRecorderPtr))
 {
      std::string moduleError;
-     if (ModuleManager && !ModuleManager->LoadModules(Config, logs, moduleError))
+     if (ModuleManager && !ModuleManager->LoadModules(Config, moduleError))
      {
           throw std::runtime_error(moduleError);
      }
@@ -743,18 +750,19 @@ bool Pipeline::HasSourceModule() const
      return ModuleManager && ModuleManager->HasSourceModule();
 }
 
-bool Pipeline::RunSourceModule(WatchMode mode, int intervalMs, LogManager* logs, std::string& errorMessage) const
+bool Pipeline::RunSourceModule(WatchMode mode, int intervalMs, std::string& errorMessage) const
 {
      if (!ModuleManager)
      {
           return true;
      }
 
-     return ModuleManager->RunSourceModule(*this, mode, intervalMs, logs, errorMessage);
+     return ModuleManager->RunSourceModule(*this, mode, intervalMs, errorMessage);
 }
 
-void Pipeline::ProcessLine(const FileState& state, const std::string& line, LogManager* logs) const
+void Pipeline::ProcessLine(const FileState& state, const std::string& line) const
 {
+     LogManager* logs = GetPipelineLogger();
      PipelineEvent event;
      event.RawLine = line;
      event.Document[Config.Event.IdField] = Tools::RandomHex(24);
@@ -952,7 +960,7 @@ void Pipeline::ProcessLine(const FileState& state, const std::string& line, LogM
 
      if (ModuleManager && !ModuleManager->Empty())
      {
-          ModuleManager->ProcessEvent(event, state, logs);
+          ModuleManager->ProcessEvent(event, state);
      }
 
      if (event.Dropped)

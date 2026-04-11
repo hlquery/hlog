@@ -17,4 +17,4 @@
 #include "core/types.h"
 
 bool ReopenFile(FileState& state, bool initialOpen);
-void RunPipelineLoop(std::vector<FileState>& states, const Pipeline& pipeline, WatchMode mode, int intervalMs, LogManager* logs);
+void RunPipelineLoop(std::vector<FileState>& states, const Pipeline& pipeline, WatchMode mode, int intervalMs);

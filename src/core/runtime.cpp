@@ -26,8 +26,6 @@
 #include <unistd.h>
 #endif
 
-#include "core/logmanager.h"
-
 namespace
 {
 
@@ -64,7 +62,7 @@ bool RefreshFileMetadata(FileState& state)
      return true;
 }
 
-void DrainFile(FileState& state, const Pipeline& pipeline, LogManager* logs)
+void DrainFile(FileState& state, const Pipeline& pipeline)
 {
      if (!state.Stream.is_open())
      {
@@ -77,7 +75,7 @@ void DrainFile(FileState& state, const Pipeline& pipeline, LogManager* logs)
      std::string chunk;
      while (std::getline(state.Stream, chunk))
      {
-          pipeline.ProcessLine(state, state.Pending + chunk, logs);
+          pipeline.ProcessLine(state, state.Pending + chunk);
           state.Pending.clear();
      }
 
@@ -97,7 +95,7 @@ void DrainFile(FileState& state, const Pipeline& pipeline, LogManager* logs)
      }
 }
 
-void CheckAndRead(FileState& state, const Pipeline& pipeline, LogManager* logs)
+void CheckAndRead(FileState& state, const Pipeline& pipeline)
 {
      struct stat st;
      if (::stat(state.PathValue.c_str(), &st) != 0)
@@ -131,15 +129,15 @@ void CheckAndRead(FileState& state, const Pipeline& pipeline, LogManager* logs)
      }
 
      RefreshFileMetadata(state);
-     DrainFile(state, pipeline, logs);
+     DrainFile(state, pipeline);
 }
 
 #ifdef __linux__
 class InotifyWatcher
 {
    public:
-     explicit InotifyWatcher(std::vector<FileState>& states, const Pipeline& pipeline, LogManager* logs)
-         : States(states), PipelineRef(pipeline), Logs(logs)
+     explicit InotifyWatcher(std::vector<FileState>& states, const Pipeline& pipeline)
+         : States(states), PipelineRef(pipeline)
      {
           Fd = inotify_init1(IN_NONBLOCK);
           if (Fd < 0)
@@ -198,7 +196,7 @@ class InotifyWatcher
                {
                     for (auto& state : States)
                     {
-                         CheckAndRead(state, PipelineRef, Logs);
+                         CheckAndRead(state, PipelineRef);
                     }
                     continue;
                }
@@ -222,7 +220,7 @@ class InotifyWatcher
                               if (state.ParentDir == dirIt->second &&
                                   (changedName.empty() || changedName == state.PathValue.filename().string()))
                               {
-                                   CheckAndRead(state, PipelineRef, Logs);
+                                   CheckAndRead(state, PipelineRef);
                               }
                          }
                     }
@@ -234,20 +232,19 @@ class InotifyWatcher
    private:
      std::vector<FileState>& States;
      const Pipeline& PipelineRef;
-     LogManager* Logs = nullptr;
      int Fd = -1;
      std::unordered_map<std::string, int> WatchByDir;
      std::unordered_map<int, std::string> DirByWatch;
 };
 #endif
 
-void RunPollLoop(std::vector<FileState>& states, const Pipeline& pipeline, int intervalMs, LogManager* logs)
+void RunPollLoop(std::vector<FileState>& states, const Pipeline& pipeline, int intervalMs)
 {
      while (Running)
      {
           for (auto& state : states)
           {
-               CheckAndRead(state, pipeline, logs);
+               CheckAndRead(state, pipeline);
           }
 
           std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs));
@@ -284,7 +281,7 @@ bool ReopenFile(FileState& state, bool initialOpen)
      return true;
 }
 
-void RunPipelineLoop(std::vector<FileState>& states, const Pipeline& pipeline, WatchMode mode, int intervalMs, LogManager* logs)
+void RunPipelineLoop(std::vector<FileState>& states, const Pipeline& pipeline, WatchMode mode, int intervalMs)
 {
      std::signal(SIGINT, HandleSignal);
 #ifdef SIGTERM
@@ -294,11 +291,11 @@ void RunPipelineLoop(std::vector<FileState>& states, const Pipeline& pipeline, W
 #ifdef __linux__
      if (mode == WatchMode::Kernel)
      {
-          InotifyWatcher watcher(states, pipeline, logs);
+          InotifyWatcher watcher(states, pipeline);
           watcher.Run(intervalMs);
           return;
      }
 #endif
 
-     RunPollLoop(states, pipeline, intervalMs, logs);
+     RunPollLoop(states, pipeline, intervalMs);
 }

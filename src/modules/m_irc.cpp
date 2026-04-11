@@ -506,7 +506,7 @@ class IRCModule final : public HLogModule
 
      /* Forward one processed pipeline event into the IRC send queue. */
 
-     void ProcessEvent(PipelineEvent& event, const FileState& state, LogManager*) override
+     void ProcessEvent(PipelineEvent& event, const FileState& state) override
      {
           if (!Running.load() || event.Dropped)
           {

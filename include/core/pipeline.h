@@ -39,7 +39,7 @@ class Pipeline
 
      /* Construct the pipeline and load all configured modules. */
 
-     explicit Pipeline(PipelineConfig config, LogManager* logs);
+     explicit Pipeline(PipelineConfig config);
 
      /* Release outputs and loaded modules. */
 
@@ -51,7 +51,7 @@ class Pipeline
 
      /* Process one input line through filters, modules, and outputs. */
 
-     void ProcessLine(const FileState& state, const std::string& line, LogManager* logs) const;
+     void ProcessLine(const FileState& state, const std::string& line) const;
 
      /* Return whether a source module owns the input loop. */
 
@@ -59,7 +59,7 @@ class Pipeline
 
      /* Run the configured source module when one is present. */
 
-     bool RunSourceModule(WatchMode mode, int intervalMs, LogManager* logs, std::string& errorMessage) const;
+     bool RunSourceModule(WatchMode mode, int intervalMs, std::string& errorMessage) const;
 
    private:
 

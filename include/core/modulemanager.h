@@ -36,15 +36,15 @@ class HLogModuleManager
 
      /* Load and start every enabled module from pipeline config. */
 
-     bool LoadModules(const PipelineConfig& config, LogManager* logs, std::string& errorMessage);
+     bool LoadModules(const PipelineConfig& config, std::string& errorMessage);
 
      /* Stop all loaded modules and release their shared libraries. */
 
-     void UnloadAll(LogManager* logs);
+     void UnloadAll();
 
      /* Send one pipeline event through all loaded filter modules. */
 
-     void ProcessEvent(PipelineEvent& event, const FileState& state, LogManager* logs) const;
+     void ProcessEvent(PipelineEvent& event, const FileState& state) const;
 
      /* Return whether no modules are currently loaded. */
 
@@ -56,7 +56,7 @@ class HLogModuleManager
 
      /* Run the configured source module when one is present. */
 
-     bool RunSourceModule(const Pipeline& pipeline, WatchMode mode, int intervalMs, LogManager* logs, std::string& errorMessage) const;
+     bool RunSourceModule(const Pipeline& pipeline, WatchMode mode, int intervalMs, std::string& errorMessage) const;
 
    private:
 

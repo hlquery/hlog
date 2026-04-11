@@ -370,7 +370,7 @@ class RedisInputModule final : public HLogModule
 
      /* Read available socket data, append it to the buffer, and decode frames. */
 
-     void ReadLoop(const Pipeline& pipeline, LogManager* logs)
+     void ReadLoop(const Pipeline& pipeline)
      {
           while (Running && Socket.IsOpen())
           {
@@ -398,7 +398,7 @@ class RedisInputModule final : public HLogModule
                     if (receive_result == SocketIoResult::Success)
                     {
                          ReceiveBuffer.append(buffer, static_cast<size_t>(bytes_read));
-                         DrainResponses(pipeline, logs);
+                         DrainResponses(pipeline);
                          continue;
                     }
 
@@ -419,7 +419,7 @@ class RedisInputModule final : public HLogModule
 
      /* Parse as many RESP frames as possible from the current receive buffer. */
 
-     void DrainResponses(const Pipeline& pipeline, LogManager* logs)
+     void DrainResponses(const Pipeline& pipeline)
      {
           size_t cursor = 0;
 
@@ -432,7 +432,7 @@ class RedisInputModule final : public HLogModule
                     return;
                }
 
-               HandleResponse(value, pipeline, logs);
+               HandleResponse(value, pipeline);
           }
 
           ReceiveBuffer.clear();
@@ -440,10 +440,8 @@ class RedisInputModule final : public HLogModule
 
      /* Forward pub/sub payload frames into the pipeline and ignore control frames. */
 
-     void HandleResponse(const RespValue& value, const Pipeline& pipeline, LogManager* logs)
+     void HandleResponse(const RespValue& value, const Pipeline& pipeline)
      {
-          (void)logs;
-
           if (value.Type == RespType::Error)
           {
                throw std::runtime_error(value.Text + ".");
@@ -462,13 +460,13 @@ class RedisInputModule final : public HLogModule
 
           if (kind == "message" && value.Array.size() >= 3)
           {
-               pipeline.ProcessLine(State, RespText(value.Array[2]), logs);
+               pipeline.ProcessLine(State, RespText(value.Array[2]));
                return;
           }
 
           if (kind == "pmessage" && value.Array.size() >= 4)
           {
-               pipeline.ProcessLine(State, RespText(value.Array[3]), logs);
+               pipeline.ProcessLine(State, RespText(value.Array[3]));
           }
      }
 
@@ -633,7 +631,7 @@ class RedisInputModule final : public HLogModule
 
      /* Connect, subscribe, and keep retrying until the process stops. */
 
-     bool Run(const Pipeline& pipeline, WatchMode, int, LogManager* logs, std::string&) override
+     bool Run(const Pipeline& pipeline, WatchMode, int, std::string&) override
      {
           Running = 1;
           std::signal(SIGINT, HandleSignal);
@@ -646,13 +644,13 @@ class RedisInputModule final : public HLogModule
                try
                {
                     ConnectAndSubscribe();
-                    ReadLoop(pipeline, logs);
+                    ReadLoop(pipeline);
                }
                catch (const std::exception& ex)
                {
-                    if (logs)
+                    if (Instance && Instance->Logs)
                     {
-                         logs->Critical("modules", "Redis module error: " + std::string(ex.what()) + ".");
+                         Instance->Logs->Critical("modules", "Redis module error: " + std::string(ex.what()) + ".");
                     }
                }
 
@@ -664,9 +662,9 @@ class RedisInputModule final : public HLogModule
                     return true;
                }
 
-               if (logs)
+               if (Instance && Instance->Logs)
                {
-                    logs->Normal("modules", "Redis module disconnected; retrying.");
+                    Instance->Logs->Normal("modules", "Redis module disconnected; retrying.");
                }
 
                std::this_thread::sleep_for(std::chrono::milliseconds(ReconnectDelayMs));

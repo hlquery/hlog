@@ -21,14 +21,19 @@ ifeq ($(OS),Windows_NT)
   THREAD_LIB :=
   SOCKET_LIBS := -lws2_32
   PIC_FLAG :=
-  EXPORT_DYNAMIC :=
+  RDYNAMIC :=
+  MODULE_SHARED_LDFLAGS :=
 else
   EXE_SUFFIX :=
 OS_NAME := $(shell uname -s 2>/dev/null || echo unknown)
 ifneq ($(filter Darwin,$(OS_NAME)),)
   MODULE_SUFFIX := .dylib
+  RDYNAMIC := -Wl,-export_dynamic
+  MODULE_SHARED_LDFLAGS := -Wl,-undefined,dynamic_lookup
 else
   MODULE_SUFFIX := .so
+  RDYNAMIC := -rdynamic
+  MODULE_SHARED_LDFLAGS :=
 endif
 FS_LIB := -lstdc++fs
 ifneq ($(filter FreeBSD OpenBSD NetBSD DragonFly Darwin,$(OS_NAME)),)
@@ -38,7 +43,6 @@ endif
   DL_LIB := -ldl
   SOCKET_LIBS :=
   PIC_FLAG := -fPIC
-  EXPORT_DYNAMIC := -rdynamic
 endif
 
 ifeq ($(OS),Windows_NT)
@@ -50,7 +54,7 @@ MODULE_DIR := $(BUILD_DIR)/modules
 
 CPPFLAGS := -Iinclude -Ivendor -I.
 CXXFLAGS := ${CXXFLAGS} -std=c++20 -O2 $(PIC_FLAG) -Wall -Wextra -Wformat=2 -Wformat-security -Wno-unused-parameter
-LDFLAGS := ${LDFLAGS} $(FS_LIB) $(THREAD_LIB) $(SOCKET_LIBS) $(DL_LIB) $(EXPORT_DYNAMIC)
+LDFLAGS := ${LDFLAGS} $(FS_LIB) $(THREAD_LIB) $(SOCKET_LIBS) $(DL_LIB) $(RDYNAMIC)
 
 LOCAL_CPP_SRCS := $(sort \
 	$(wildcard src/core/*.cpp) \
@@ -94,7 +98,7 @@ install: all
 
 $(MODULE_DIR)/%$(MODULE_SUFFIX): src/modules/%.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -shared $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -shared $< -o $@ $(MODULE_SHARED_LDFLAGS)
 
 $(OBJ_DIR)/local/%.o: src/%.cpp
 	@mkdir -p $(dir $@)

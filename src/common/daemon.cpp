@@ -197,7 +197,6 @@ void hlcore::Run()
      if (HLogPipeline->HasSourceModule() &&
          !HLogPipeline->RunSourceModule(HLogEffectiveMode,
                                         HLogPipeline->GetConfig().PollIntervalMs,
-                                        Logs.get(),
                                         sourceError))
      {
           throw std::runtime_error(sourceError.empty() ? "hlog source module failed." : sourceError);
@@ -324,7 +323,7 @@ void hlcore::ResolvePipelineConfig()
      }
 
      MaterializeFileInputModule(pipelineConfig);
-     HLogPipeline = std::make_unique<Pipeline>(std::move(pipelineConfig), Logs.get());
+     HLogPipeline = std::make_unique<Pipeline>(std::move(pipelineConfig));
 }
 
 /* Resolve auto mode into the actual backend used by this platform. */

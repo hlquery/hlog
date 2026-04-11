@@ -24,6 +24,7 @@
 #include <dlfcn.h>
 #endif
 
+#include "core/hlcore.h"
 #include "core/logmanager.h"
 
 namespace
@@ -31,8 +32,14 @@ namespace
 
 /* Send loader messages to the runtime logger or stderr fallback. */
 
-void LogModuleMessage(LogManager* logs, const std::string& level, const std::string& message)
+LogManager* GetModuleLogger()
 {
+     return (Instance && Instance->Logs) ? Instance->Logs.get() : nullptr;
+}
+
+void LogModuleMessage(const std::string& level, const std::string& message)
+{
+     LogManager* logs = GetModuleLogger();
      if (!logs)
      {
           std::cerr << message << std::endl;
@@ -143,14 +150,14 @@ HLogModuleManager::HLogModuleManager() = default;
 
 HLogModuleManager::~HLogModuleManager()
 {
-     UnloadAll(nullptr);
+     UnloadAll();
 }
 
 /* Load, start, and stage every enabled module before committing them. */
 
-bool HLogModuleManager::LoadModules(const PipelineConfig& config, LogManager* logs, std::string& errorMessage)
+bool HLogModuleManager::LoadModules(const PipelineConfig& config, std::string& errorMessage)
 {
-     UnloadAll(logs);
+     UnloadAll();
 
      std::vector<LoadedModule> stagedModules;
 
@@ -199,7 +206,7 @@ bool HLogModuleManager::LoadModules(const PipelineConfig& config, LogManager* lo
                return false;
           }
 
-          LogModuleMessage(logs, "normal", "Loading module '" + moduleConfig.Name + "' from " + modulePath.string() + ".");
+          LogModuleMessage("normal", "Loading module '" + moduleConfig.Name + "' from " + modulePath.string() + ".");
 
           void* handle = nullptr;
           CreateHLogModuleFn createFn = nullptr;
@@ -307,7 +314,7 @@ bool HLogModuleManager::LoadModules(const PipelineConfig& config, LogManager* lo
 
 /* Stop modules in reverse order and release their shared-library handles. */
 
-void HLogModuleManager::UnloadAll(LogManager* logs)
+void HLogModuleManager::UnloadAll()
 {
      for (auto it = Modules.rbegin(); it != Modules.rend(); ++it)
      {
@@ -319,11 +326,11 @@ void HLogModuleManager::UnloadAll(LogManager* logs)
                }
                catch (const std::exception& ex)
                {
-                    LogModuleMessage(logs, "critical", "Module '" + it->Name + "' threw during Stop(): " + ex.what());
+                    LogModuleMessage("critical", "Module '" + it->Name + "' threw during Stop(): " + ex.what());
                }
                catch (...)
                {
-                    LogModuleMessage(logs, "critical", "Module '" + it->Name + "' threw during Stop(): unknown exception");
+                    LogModuleMessage("critical", "Module '" + it->Name + "' threw during Stop(): unknown exception");
                }
                it->Instance.reset();
           }
@@ -344,7 +351,7 @@ void HLogModuleManager::UnloadAll(LogManager* logs)
 
 /* Run the event pipeline through every loaded filter module. */
 
-void HLogModuleManager::ProcessEvent(PipelineEvent& event, const FileState& state, LogManager* logs) const
+void HLogModuleManager::ProcessEvent(PipelineEvent& event, const FileState& state) const
 {
      for (const auto& module : Modules)
      {
@@ -355,15 +362,15 @@ void HLogModuleManager::ProcessEvent(PipelineEvent& event, const FileState& stat
 
           try
           {
-               module.Instance->ProcessEvent(event, state, logs);
+               module.Instance->ProcessEvent(event, state);
           }
           catch (const std::exception& ex)
           {
-               LogModuleMessage(logs, "critical", "Module '" + module.Name + "' threw during ProcessEvent(): " + ex.what());
+               LogModuleMessage("critical", "Module '" + module.Name + "' threw during ProcessEvent(): " + ex.what());
           }
           catch (...)
           {
-               LogModuleMessage(logs, "critical", "Module '" + module.Name + "' threw during ProcessEvent(): unknown exception");
+               LogModuleMessage("critical", "Module '" + module.Name + "' threw during ProcessEvent(): unknown exception");
           }
 
           if (event.Dropped)
@@ -385,7 +392,7 @@ bool HLogModuleManager::HasSourceModule() const
      });
 }
 
-bool HLogModuleManager::RunSourceModule(const Pipeline& pipeline, WatchMode mode, int intervalMs, LogManager* logs, std::string& errorMessage) const
+bool HLogModuleManager::RunSourceModule(const Pipeline& pipeline, WatchMode mode, int intervalMs, std::string& errorMessage) const
 {
      const LoadedModule* sourceModule = nullptr;
 
@@ -412,7 +419,7 @@ bool HLogModuleManager::RunSourceModule(const Pipeline& pipeline, WatchMode mode
 
      try
      {
-          return sourceModule->Instance->Run(pipeline, mode, intervalMs, logs, errorMessage);
+          return sourceModule->Instance->Run(pipeline, mode, intervalMs, errorMessage);
      }
      catch (const std::exception& ex)
      {

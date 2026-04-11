@@ -41,7 +41,7 @@ class CoreExport HLogModule
      {
      }
 
-     virtual void ProcessEvent(PipelineEvent&, const FileState&, LogManager*)
+     virtual void ProcessEvent(PipelineEvent&, const FileState&)
      {
      }
 
@@ -50,7 +50,7 @@ class CoreExport HLogModule
           return false;
      }
 
-     virtual bool Run(const Pipeline&, WatchMode, int, LogManager*, std::string&)
+     virtual bool Run(const Pipeline&, WatchMode, int, std::string&)
      {
           return true;
      }
