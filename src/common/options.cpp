@@ -11,7 +11,7 @@
 
 /*
  * hlquery - Search beyond keywords.
- * http://www.hlquery.com
+ * https://www.hlquery.com
  *
  * Copyright (C) 2021-2026, Carlos F. Ferry <carlos.ferry@gmail.com>
  *

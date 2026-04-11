@@ -4,18 +4,17 @@
 
 <div align="center">
 
-# hlog
-
-**A modular data feeder for hlquery**
+**hlog: a modular data feeder for hlquery**
 
 [![Twitter Follow](https://img.shields.io/twitter/url/https/x.com/hlquery.svg?style=social&label=Follow%20%40hlquery)](https://x.com/hlquery)
 [![Linux Build](https://github.com/hlquery/hlquery/workflows/Linux%20build/badge.svg)](https://github.com/hlquery/hlquery/actions)
 [![macOS Build](https://github.com/hlquery/hlquery/workflows/macOS%20Build/badge.svg)](https://github.com/hlquery/hlquery/actions)
+[![FreeBSD Build](https://github.com/hlquery/hlquery/workflows/FreeBSD%20Build/badge.svg)](https://github.com/hlquery/hlquery/actions)
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/hlquery/hlquery)](https://github.com/hlquery/hlquery/pulse)
 [![GitHub stars](https://img.shields.io/github/stars/hlquery/hlquery?style=social)](https://github.com/hlquery/hlquery/stargazers)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
-[Documentation](https://docs.hlquery.com) • [GitHub](https://github.com/hlquery/hlquery) • [Discord](https://discord.hlquery.com)
+[Documentation](https://docs.hlquery.com) • [GitHub](https://github.com/hlquery/hlquery/tree/unstable/etc/hlog) • [Discord](https://discord.hlquery.com)
 
 </div>
 
@@ -33,7 +32,7 @@ Build:
 $ cd etc/hlog
 $ ./configure
 $ make
-` ``
+```
 
 On macOS and the BSDs, use `gmake` instead of the platform `make`.
 
