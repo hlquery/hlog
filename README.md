@@ -23,29 +23,26 @@
 
 > **Development Status**: `hlog` is currently in active development and should not be used in production environments. The software may contain bugs, incomplete features, and breaking changes may occur without notice.
 
-`hlog` is a lightweight C++ log pipeline that tails files, enriches lines, and pushes structured events into an hlquery collection.
+`hlog` is a lightweight C++ data feeder for hlquery. It ingests external data, transforms it in flight, and forwards structured events into an hlquery collection.
 
-It reuses the main tree's `ServerConfig`, `ConfigReader`, and `LogManager` so it can reuse `hlquery.conf` log targets, but it runs as a standalone worker rather than a search server. Runtime flow is intentionally small—`input -> filter -> output`—with each stage driven by `run/conf/hlog.conf`.
+The design is intentionally modular so pipelines stay small, composable, and easy to adapt to different inputs, enrichment steps, and destinations.
 
 Build:
 
 ```bash
-cd etc/hlog
-./configure
-make
-```
+$ cd etc/hlog
+$ ./configure
+$ make
+` ``
 
 On macOS and the BSDs, use `gmake` instead of the platform `make`.
 
 Run:
 
 ```bash
-./run/hlog start
-./run/hlog start --nofork
-./run/hlog status
-./run/hlog stop
-./run/hlog test
-./run/hlog start --file ../../run/logs/hlquery.log --mode refresh --interval 1000
+$ ./run/hlog start --nofork
+$ ./run/hlog status
+$ ./run/hlog stop
 ```
 
 The wrapper in `run/hlog` is the normal entrypoint. It handles background start, pidfile management, status, stop, restart, and JSON wrapper output. `build/bin/hlog` is the underlying binary, and the runtime cleanup path removes the daemon pidfile on clean exit.
@@ -214,32 +211,3 @@ class DebugModule final : public HLogModule
 
 MODULE_LOAD(DebugModule)
 ```
-
-### Configure-time overrides
-
-`etc/hlog/configure` now exposes CLI flags that rewrite the generated
-`run/conf/hlog.conf` values so you can point hlog at a different log file, endpoint,
-or collection without editing the template manually. Available options include:
-
-- `--input=/path/to/file`
-- `--method=inotify|refresh|auto`
-- `--collection=logs`
-- `--endpoint=http://127.0.0.1:9200`
-- `--auth-method=bearer|api-key`
-- `--auth-token=FOO`
-- `--environment=dev`
-- `--host=my-host`
-- `--tags=my-tag`
-- `--include-date=true|false`
-- `--include-tags=true|false`
-- `--timeout=5`
-
-Run `./configure --help` inside `etc/hlog` for the full list of flags and their defaults.
-
-### Failure buffer
-
-When `output_hlquery` fails to insert a line (connection refused, timeout, etc.) hlog now
-appends the raw line plus timestamp to `run/data/hlog_failed.log` before retrying. You can
-replay that file once hlquery is healthy by running `etc/hlog/configure --input=../../run/data/hlog_failed.log`
-(`--start-position=beginning` ensures every saved line is emitted). After the replay completes,
-truncate or delete the failure log to prevent duplicate inserts.
