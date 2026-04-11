@@ -1,0 +1,739 @@
+#!/usr/bin/env perl
+#
+# hlog - Live log pipeline for hlquery.
+#
+
+use v5.26.0;
+use strict;
+use warnings FATAL => qw(all);
+
+use Config qw(%Config);
+use Cwd qw(getcwd abs_path);
+use File::Basename qw(dirname);
+use File::Path qw(mkpath rmtree);
+use File::Spec::Functions qw(catdir catfile rel2abs);
+use Text::ParseWords qw(shellwords);
+
+$| = 1;
+
+$SIG{INT} = sub {
+    print "\n\033[91mInterrupted by user. Exiting.\033[0m\n";
+    exit 1;
+};
+
+use constant {
+    RESET     => "\033[0m",
+    BOLD      => "\033[1m",
+    BLACK     => "\033[30m",
+    WHITE     => "\033[37m",
+    BRIGHT_BLUE => "\033[94m",
+    OKGREEN   => "\033[92m",
+    OKCYAN    => "\033[96m",
+    OKBLUE    => "\033[94m",
+    WARNING   => "\033[1;38;5;208m",
+    FAIL      => "\033[91m",
+};
+
+use constant {
+    PROJECT_NAME => 'hlog Pipeline',
+    RUN_DIR      => 'run',
+};
+
+my $script_path = $0;
+if ($script_path !~ m{^/}) {
+    $script_path = rel2abs($script_path);
+}
+my $base_path = abs_path(dirname($script_path));
+my $root_path = abs_path(catfile($base_path, '..', '..'));
+my $uid = $> // 0;
+my $gid = $( // 0;
+my %vars;
+my %probe = ();
+
+sub get_system_name {
+    my $system = $Config{osname} || $^O || 'unknown';
+    return 'Windows' if $^O eq 'MSWin32';
+    return 'Darwin' if $system =~ /darwin/i;
+    return 'FreeBSD' if $system =~ /freebsd/i;
+    return 'OpenBSD' if $system =~ /openbsd/i;
+    return 'NetBSD' if $system =~ /netbsd/i;
+    return 'DragonFly' if $system =~ /dragonfly/i;
+    return 'Linux' if $system =~ /linux/i;
+    return $system;
+}
+
+sub is_bsd_make_platform {
+    my $system = get_system_name();
+    return scalar grep { $_ eq $system } qw(Darwin FreeBSD OpenBSD NetBSD DragonFly);
+}
+
+sub get_make_command {
+    return 'make' if $^O eq 'MSWin32';
+    return is_bsd_make_platform() ? 'gmake' : 'make';
+}
+
+sub get_cpu_count {
+    my $count = 0;
+    if ($^O eq 'MSWin32') {
+        $count = $ENV{NUMBER_OF_PROCESSORS} || 0;
+    } elsif (is_bsd_make_platform()) {
+        $count = `sysctl -n hw.ncpu 2>/dev/null`;
+    } else {
+        $count = `nproc 2>/dev/null`;
+    }
+    chomp $count if defined $count;
+    return ($count && $count =~ /^\d+$/ && $count > 0) ? $count : 1;
+}
+
+sub default_cxx {
+    return $ENV{CXX} if $ENV{CXX};
+    return 'c++';
+}
+
+sub detect_terminal_support {
+    return 0 unless -t STDOUT;
+    my $term = $ENV{TERM} || '';
+    return 0 if $term eq 'dumb';
+    return 0 if $ENV{NO_COLOR};
+    return 0 if $ENV{FORCE_COLOR} && $ENV{FORCE_COLOR} eq '0';
+    return 0 if $ENV{CI} && !$ENV{FORCE_COLOR};
+    return 1;
+}
+
+my $ansi_supported = detect_terminal_support();
+my %char_map = (
+    'checkmark_ok'   => $ansi_supported ? '✔' : '[OK]',
+    'checkmark_fail' => $ansi_supported ? '✘' : '[FAIL]',
+    'gear'           => $ansi_supported ? '•' : '-',
+    'star'           => $ansi_supported ? '•' : '-',
+    'arrow'          => $ansi_supported ? '⟶' : '>',
+    'asterisk'       => $ansi_supported ? '•' : '*',
+);
+
+sub print_header {
+    my $bold_start = $ansi_supported ? BOLD : "";
+    my $white_start = $ansi_supported ? WHITE : "";
+    my $reset_end = $ansi_supported ? RESET : "";
+    print "\n" . $bold_start . $white_start . PROJECT_NAME . " Configuration" . $reset_end . "\n";
+}
+
+sub print_status {
+    my ($status, $description, $value) = @_;
+
+    my $label = $status;
+    $label = "ERROR" if $status eq 'FAIL' || $status eq 'ERROR';
+
+    my $status_color = "";
+    if ($status eq 'OK') {
+        $status_color = $ansi_supported ? OKGREEN : "";
+    } elsif ($status eq 'SKIP') {
+        $status_color = $ansi_supported ? WARNING : "";
+    } elsif ($status eq 'AVAIL') {
+        $status_color = $ansi_supported ? OKCYAN : "";
+    } elsif ($status eq 'FAIL' || $status eq 'ERROR') {
+        $status_color = $ansi_supported ? FAIL : "";
+    } elsif ($status eq 'INFO') {
+        $status_color = $ansi_supported ? OKBLUE : "";
+    }
+
+    my $tag_content = " " . $label . " ";
+    my $lb = $ansi_supported ? BLACK . "[" . RESET : "[";
+    my $rb = $ansi_supported ? BLACK . "]" . RESET : "]";
+    my $bracket_status = $lb . $status_color . $tag_content . ($ansi_supported ? RESET : "") . $rb;
+
+    my $tag_width = length($label) + 4;
+    my $gap = 10 - $tag_width;
+    $gap = 1 if $gap < 1;
+    my $indent = " " x $gap;
+
+    if (defined $value) {
+        my $checkmark = "";
+        if ($status eq 'OK' || $status eq 'AVAIL') {
+            if ($value !~ /^(no|not available|not found|disabled)\b/i) {
+                $checkmark = $ansi_supported
+                    ? " " . OKGREEN . $char_map{'checkmark_ok'} . RESET
+                    : " " . $char_map{'checkmark_ok'};
+            }
+        } elsif ($status eq 'SKIP' || $status eq 'FAIL') {
+            if ($value =~ /^(no|not available|not found|disabled)\b/i) {
+                $checkmark = $ansi_supported
+                    ? " " . FAIL . $char_map{'checkmark_fail'} . RESET
+                    : " " . $char_map{'checkmark_fail'};
+            }
+        }
+
+        my $bold_start = $ansi_supported ? BOLD : "";
+        my $bold_end   = $ansi_supported ? RESET : "";
+
+        printf "%s%s%s .. %s%s%s%s\n",
+            $bracket_status,
+            $indent,
+            $description,
+            $bold_start,
+            $value,
+            $bold_end,
+            $checkmark;
+    } else {
+        printf "%s%s%s\n", $bracket_status, $indent, $description;
+    }
+}
+
+sub print_step {
+    my ($message) = @_;
+    print_status("INFO", $message);
+}
+
+sub print_success {
+    my ($message, $value) = @_;
+    print_status("OK", $message, $value);
+}
+
+sub print_warning {
+    my ($message, $value) = @_;
+    print_status("SKIP", $message, $value);
+}
+
+sub print_error {
+    my ($message, $value) = @_;
+    print_status("ERROR", $message, $value);
+}
+
+sub print_section {
+    my ($title) = @_;
+    print "\n";
+    my $indent = "  ";
+    my $total_width = 50;
+    my $title_length = length($title);
+    my $available_width = $total_width - length($indent) - $title_length - 2;
+    my $rule_length = int($available_width / 2);
+    $rule_length = 4 if $rule_length < 4;
+    my $rule = '─' x $rule_length;
+    my $bold_start = $ansi_supported ? BOLD : "";
+    my $reset_end = $ansi_supported ? RESET : "";
+    print $indent . $bold_start . $rule . " " . $title . " " . $rule . $reset_end . "\n\n";
+}
+
+sub slurp_file {
+    my ($path) = @_;
+    open my $fh, '<', $path or die "Cannot read $path: $!\n";
+    local $/;
+    my $content = <$fh>;
+    close $fh;
+    return $content;
+}
+
+sub write_file {
+    my ($path, $content) = @_;
+    open my $fh, '>', $path or die "Cannot write $path: $!\n";
+    print {$fh} $content;
+    close $fh;
+}
+
+sub get_version {
+    for my $script (
+        catfile($base_path, 'src', 'version.sh'),
+        catfile($root_path, 'src', 'version.sh')
+    ) {
+        next unless -f $script;
+
+        my $content = slurp_file($script);
+        if ($content =~ /echo\s+"(?:hlquery|hlog)-([^"\r\n]+)"/) {
+            return $1;
+        }
+    }
+
+    return '1.0.0';
+}
+
+sub generate_version_script {
+    my $version_path = catfile($base_path, 'src', 'version.sh');
+    my $version_content = <<"EOF";
+#!/bin/sh
+echo "hlog-$vars{HLQUERY_VERSION}"
+EOF
+
+    write_file($version_path, $version_content);
+    chmod 0755, $version_path;
+    print_success('Generated version script', $version_path);
+}
+
+sub create_required_directories {
+    # Keep hlog self-contained under etc/hlog so it can be configured and run
+    # without writing into the parent hlquery runtime tree.
+    my @dirs = (
+        catdir($base_path, 'build'),
+        catdir($base_path, 'run'),
+        catdir($base_path, 'run', 'bin'),
+        catdir($base_path, 'run', 'conf'),
+        catdir($base_path, 'run', 'data'),
+        catdir($base_path, 'run', 'logs'),
+        catdir($base_path, 'run', 'pid'),
+    );
+
+    my $created = 0;
+    foreach my $dir (@dirs) {
+        next if -d $dir;
+        mkpath($dir);
+        $created++;
+    }
+
+    if ($created > 0) {
+        print_success("Directory structure", "Created $created directories");
+    } else {
+        print_success("Directory structure", "All directories validated");
+    }
+}
+
+sub generate_hlog_wrapper {
+    my $template_path = catfile($base_path, 'make', 'hlog.tpl');
+    my $output_path = catfile($base_path, RUN_DIR, 'hlog');
+
+    # The wrapper script is generated from a template so configure can inject
+    # the resolved version and local install path every time.
+    if (!-f $template_path) {
+        print_warning("hlog template not found", $template_path);
+        return;
+    }
+
+    my $template_content = slurp_file($template_path);
+    my %wrapper_vars = (
+        'HLQUERY_VERSION' => $vars{HLQUERY_VERSION},
+        'HLOG_BASE_DIR'   => $base_path,
+    );
+
+    foreach my $key (keys %wrapper_vars) {
+        my $value = $wrapper_vars{$key};
+        $template_content =~ s/\$\{$key\}/$value/g;
+    }
+
+    write_file($output_path, $template_content);
+    chmod 0755, $output_path;
+    print_success('Generated run/hlog wrapper', $output_path);
+}
+
+sub platform_module_suffix {
+    return '.dll' if $^O eq 'MSWin32';
+    return '.dylib' if get_system_name() eq 'Darwin';
+    return '.so';
+}
+
+sub command_exists {
+    my ($cmd) = @_;
+    return 0 unless defined $cmd && length $cmd;
+    return 1 if $cmd =~ m{[\\/]} && -x $cmd;
+
+    my $path_sep = $Config{path_sep} || ($^O eq 'MSWin32' ? ';' : ':');
+    my @exts = ('');
+    if ($^O eq 'MSWin32') {
+        my $pathext = $ENV{PATHEXT} || '.COM;.EXE;.BAT;.CMD';
+        @exts = grep { length $_ } split /;/, $pathext;
+        unshift @exts, '' unless $cmd =~ /\.[A-Za-z0-9]+$/;
+    }
+
+    foreach my $dir (split /\Q$path_sep\E/, ($ENV{PATH} // '')) {
+        next unless length $dir;
+        foreach my $ext (@exts) {
+            my $candidate = catfile($dir, $cmd . $ext);
+            return 1 if -f $candidate && -x $candidate;
+        }
+    }
+
+    return 0;
+}
+
+sub get_compiler_version {
+    my ($cxx) = @_;
+    my $version = `$cxx --version 2>/dev/null`;
+    chomp $version;
+    my ($first) = split /\n/, $version;
+    return $first || 'unknown';
+}
+
+sub run_compile_probe {
+    my (%args) = @_;
+    my $name = $args{name};
+    my $source = $args{source};
+    my $cxx = $vars{CXX};
+    my $cxxflags = $vars{CXXFLAGS} || '';
+    my $ldflags = $vars{LDFLAGS} || '';
+
+    my $probe_dir = catdir($base_path, 'build', 'configure-probes');
+    mkpath($probe_dir) unless -d $probe_dir;
+
+    # Each probe writes a tiny one-off translation unit, compiles it with the
+    # current flags, and then deletes the probe artifacts immediately. That
+    # keeps feature detection tied to the real toolchain instead of uname-based
+    # guesses.
+    my $src = catfile($probe_dir, "$name.cpp");
+    my $bin = catfile($probe_dir, $name);
+    write_file($src, $source);
+
+    my @cmd = (
+        $cxx,
+        '-std=c++20',
+        shellwords($cxxflags),
+        '-I' . catdir($base_path, 'include'),
+        '-I' . catdir($root_path, 'include'),
+        '-I' . catdir($root_path, 'vendor'),
+        '-I' . catdir($root_path, 'etc', 'api', 'cpp', 'vendor', 'json'),
+        $src,
+        '-o',
+        $bin,
+        shellwords($ldflags),
+    );
+    my $ok = (system(@cmd) == 0);
+    unlink $src if -f $src;
+    unlink $bin if -f $bin;
+    return $ok;
+}
+
+sub check_runtime_writable {
+    my ($dir) = @_;
+    mkpath($dir) unless -d $dir;
+    my $test = catfile($dir, '.configure-write-test');
+    if (open my $fh, '>', $test) {
+        print {$fh} "ok\n";
+        close $fh;
+        unlink $test;
+        return 1;
+    }
+    return 0;
+}
+
+sub bool_flag {
+    my ($value, $default) = @_;
+    return $default unless defined $value;
+    return $value =~ /^(true|1|yes)$/i ? 'true' : 'false';
+}
+
+sub print_cli_help {
+    print "\n";
+    print "hlog configure options:\n";
+    print "  --input=PATH            | Set the filein module path (default: run/logs/hlquery.log)\n";
+    print "  --method=METHOD         | filein method (auto|inotify|refresh)\n";
+    print "  --start-position=FLAG   | filein start_position (beginning|end)\n";
+    print "  --refresh-ms=MS         | filein refresh interval when method=refresh\n";
+    print "  --collection=NAME       | Target collection name for output_hlquery\n";
+    print "  --endpoint=URL          | HLQuery HTTP endpoint for ingestion\n";
+    print "  --auth-method=STYLE     | output_hlquery auth_method (bearer|api-key)\n";
+    print "  --auth-token=TOKEN      | Optional auth token for hlquery output\n";
+    print "  --environment=VALUE     | value added to the environment field filter\n";
+    print "  --host=VALUE            | host_value emitted for each event\n";
+    print "  --tags=VALUE            | tags_value emitted for each event\n";
+    print "  --include-date=BOOL     | include_date event flag (true|false)\n";
+    print "  --include-tags=BOOL     | include_tags event flag (true|false)\n";
+    print "  --timeout=SECONDS       | output_hlquery timeout\n";
+    print "  --failure-buffer=PATH   | File to store failed inserts for replay\n";
+    print "  --help, -h              | Show this help message\n";
+    print "\n";
+}
+
+sub parse_cli_options {
+    # CLI overrides are written straight into %vars so the generation phase can
+    # substitute one final resolved value set into config and Makefile
+    # templates.
+    while (my $arg = shift @ARGV) {
+        if ($arg eq '--help' || $arg eq '-h') {
+            print_cli_help();
+            exit 0;
+        } elsif ($arg =~ /^--input=(.+)$/) {
+            $vars{HLOG_INPUT_PATH} = $1;
+        } elsif ($arg eq '--input') {
+            $vars{HLOG_INPUT_PATH} = shift @ARGV // die "--input requires a value\n";
+        } elsif ($arg =~ /^--method=(.+)$/) {
+            $vars{HLOG_INPUT_METHOD} = lc $1;
+        } elsif ($arg eq '--method') {
+            $vars{HLOG_INPUT_METHOD} = lc(shift @ARGV // die "--method requires a value\n");
+        } elsif ($arg =~ /^--start-position=(.+)$/) {
+            $vars{HLOG_INPUT_START} = lc $1;
+        } elsif ($arg eq '--start-position') {
+            $vars{HLOG_INPUT_START} = lc(shift @ARGV // die "--start-position requires a value\n");
+        } elsif ($arg =~ /^--refresh-ms=(.+)$/) {
+            $vars{HLOG_INPUT_REFRESH_MS} = $1;
+        } elsif ($arg eq '--refresh-ms') {
+            $vars{HLOG_INPUT_REFRESH_MS} = shift @ARGV // die "--refresh-ms requires a value\n";
+        } elsif ($arg =~ /^--collection=(.+)$/) {
+            $vars{HLOG_OUTPUT_COLLECTION} = $1;
+        } elsif ($arg eq '--collection') {
+            $vars{HLOG_OUTPUT_COLLECTION} = shift @ARGV // die "--collection requires a value\n";
+        } elsif ($arg =~ /^--endpoint=(.+)$/) {
+            $vars{HLOG_OUTPUT_ENDPOINT} = $1;
+        } elsif ($arg eq '--endpoint') {
+            $vars{HLOG_OUTPUT_ENDPOINT} = shift @ARGV // die "--endpoint requires a value\n";
+        } elsif ($arg =~ /^--auth-method=(.+)$/) {
+            $vars{HLOG_OUTPUT_AUTH_METHOD} = $1;
+        } elsif ($arg eq '--auth-method') {
+            $vars{HLOG_OUTPUT_AUTH_METHOD} = shift @ARGV // die "--auth-method requires a value\n";
+        } elsif ($arg =~ /^--auth-token=(.+)$/) {
+            $vars{HLOG_OUTPUT_AUTH_TOKEN} = $1;
+        } elsif ($arg eq '--auth-token') {
+            $vars{HLOG_OUTPUT_AUTH_TOKEN} = shift @ARGV // die "--auth-token requires a value\n";
+        } elsif ($arg =~ /^--environment=(.+)$/) {
+            $vars{HLOG_ENVIRONMENT} = $1;
+        } elsif ($arg eq '--environment') {
+            $vars{HLOG_ENVIRONMENT} = shift @ARGV // die "--environment requires a value\n";
+        } elsif ($arg =~ /^--host=(.+)$/) {
+            $vars{HLOG_HOST_VALUE} = $1;
+        } elsif ($arg eq '--host') {
+            $vars{HLOG_HOST_VALUE} = shift @ARGV // die "--host requires a value\n";
+        } elsif ($arg =~ /^--tags=(.+)$/) {
+            $vars{HLOG_TAGS_VALUE} = $1;
+        } elsif ($arg eq '--tags') {
+            $vars{HLOG_TAGS_VALUE} = shift @ARGV // die "--tags requires a value\n";
+        } elsif ($arg =~ /^--include-date=(.+)$/) {
+            $vars{HLOG_INCLUDE_DATE} = bool_flag($1, $vars{HLOG_INCLUDE_DATE});
+        } elsif ($arg eq '--include-date') {
+            $vars{HLOG_INCLUDE_DATE} = bool_flag(shift @ARGV // die "--include-date requires a value\n", $vars{HLOG_INCLUDE_DATE});
+        } elsif ($arg =~ /^--include-tags=(.+)$/) {
+            $vars{HLOG_INCLUDE_TAGS} = bool_flag($1, $vars{HLOG_INCLUDE_TAGS});
+        } elsif ($arg eq '--include-tags') {
+            $vars{HLOG_INCLUDE_TAGS} = bool_flag(shift @ARGV // die "--include-tags requires a value\n", $vars{HLOG_INCLUDE_TAGS});
+        } elsif ($arg =~ /^--timeout=(.+)$/) {
+            $vars{HLOG_OUTPUT_TIMEOUT} = $1;
+        } elsif ($arg eq '--timeout') {
+            $vars{HLOG_OUTPUT_TIMEOUT} = shift @ARGV // die "--timeout requires a value\n";
+        } elsif ($arg =~ /^--failure-buffer=(.+)$/) {
+            $vars{HLOG_FAILURE_BUFFER} = $1;
+        } elsif ($arg eq '--failure-buffer') {
+            $vars{HLOG_FAILURE_BUFFER} = shift @ARGV // die "--failure-buffer requires a value\n";
+        } else {
+            print "Unknown option: $arg\n";
+            print_cli_help();
+            exit 1;
+        }
+    }
+    my %method_allow = map { $_ => 1 } qw(auto inotify notification refresh);
+    # Accept only the watcher methods implemented by the runtime. That keeps us
+    # from generating a pipeline config the binary cannot honor.
+    unless ($method_allow{$vars{HLOG_INPUT_METHOD}}) {
+        die "Invalid input method '$vars{HLOG_INPUT_METHOD}'\n";
+    }
+    my %start_allow = map { $_ => 1 } qw(beginning end);
+    unless ($start_allow{$vars{HLOG_INPUT_START}}) {
+        die "Invalid start_position '$vars{HLOG_INPUT_START}'\n";
+    }
+}
+
+%vars = (
+    CXX => default_cxx(),
+    CXXFLAGS => $ENV{CXXFLAGS} || '',
+    LDFLAGS => $ENV{LDFLAGS} || '',
+    SOCKETENGINE_NAME => 'poll',
+    HLQUERY_VERSION => get_version(),
+    HLQUERY_SYSTEM => get_system_name(),
+    HLOG_BASE_DIR => $base_path,
+    HLQUERY_CONFIG_DIR => catfile($root_path, 'run', 'conf'),
+    HLQUERY_DATA_DIR => catfile($root_path, 'run', 'data'),
+    HLQUERY_LOG_DIR => catfile($root_path, 'run', 'logs'),
+    HLQUERY_ADMIN_DIR => catfile($root_path, 'run'),
+    HLQUERY_PID_DIR => catfile($root_path, 'run'),
+    HLQUERY_SSL_DIR => catfile($root_path, 'run', 'ssl'),
+    HLQUERY_DEFAULT_HTTP_PORT => 9200,
+    HLQUERY_MAX_THREADS => get_cpu_count(),
+    HLOG_SAMPLE_FILE => catfile($root_path, 'tests', 'sample.txt'),
+    HLOG_INPUT_PATH => 'tests/file.txt',
+    HLOG_INPUT_METHOD => 'auto',
+    HLOG_INPUT_START => 'end',
+    HLOG_INPUT_REFRESH_MS => '1000',
+    HLOG_ENVIRONMENT => 'dev',
+    HLOG_HOST_VALUE => 'localhost',
+    HLOG_TAGS_VALUE => 'log_line',
+    HLOG_INCLUDE_DATE => 'true',
+    HLOG_INCLUDE_TAGS => 'true',
+    HLOG_OUTPUT_ENDPOINT => 'http://127.0.0.1:9200',
+    HLOG_OUTPUT_COLLECTION => 'logs',
+    HLOG_OUTPUT_AUTH_METHOD => 'bearer',
+    HLOG_OUTPUT_AUTH_TOKEN => '',
+    HLOG_OUTPUT_TIMEOUT => '5',
+    HLOG_FAILURE_BUFFER => '../../run/data/hlog_failed.log',
+    HLOG_FAILURE_BUFFER_ENABLED => 'true',
+    HLOG_MODULE_SUFFIX => platform_module_suffix(),
+);
+
+parse_cli_options();
+
+print_header();
+
+print_section('Environment');
+$probe{compiler_exists} = command_exists($vars{CXX});
+$probe{make_exists} = command_exists(get_make_command());
+$probe{compiler_version} = $probe{compiler_exists} ? get_compiler_version($vars{CXX}) : 'not found';
+
+print_success('System', $vars{HLQUERY_SYSTEM});
+if ($probe{compiler_exists}) {
+    print_success('Compiler', $vars{CXX});
+    print_success('Compiler version', $probe{compiler_version});
+} else {
+    print_error('Compiler', $vars{CXX});
+    die "Compiler not found: $vars{CXX}\n";
+}
+if ($probe{make_exists}) {
+    print_success('Make tool', get_make_command());
+} else {
+    print_error('Make tool', get_make_command());
+    die "Required make tool not found: " . get_make_command() . "\n";
+}
+print_success('CPU threads', $vars{HLQUERY_MAX_THREADS});
+print_success('Project root', $base_path);
+
+print_section('Feature Probes');
+#
+# Probe by compiling small programs instead of checking headers on disk. This
+# catches both missing development files and toolchains that are present but not
+# actually usable with the current flags.
+$probe{cxx20} = run_compile_probe(
+    name => 'cxx20',
+    source => '#include <iostream>
+int main() { auto v = 42; std::cout << v; return 0; }'
+);
+$probe{filesystem} = run_compile_probe(
+    name => 'filesystem',
+    source => '#include <filesystem>
+int main() { std::filesystem::path p{"."}; return p.empty(); }'
+);
+$probe{sockets} = run_compile_probe(
+    name => 'sockets',
+    source => $^O eq 'MSWin32'
+        ? '#include <winsock2.h>
+int main() { SOCKET fd = socket(AF_INET, SOCK_STREAM, 0); return fd == INVALID_SOCKET; }'
+        : '#include <sys/socket.h>
+int main() { int fd = socket(AF_INET, SOCK_STREAM, 0); return fd < 0; }'
+);
+$probe{poll} = run_compile_probe(
+    name => 'poll',
+    source => $^O eq 'MSWin32'
+        ? 'int main() { return 0; }'
+        : '#include <poll.h>
+int main() { struct pollfd pfd{}; return poll(&pfd, 0, 0); }'
+);
+$probe{inotify} = run_compile_probe(
+    name => 'inotify',
+    source => $^O eq 'MSWin32'
+        ? 'int main() { return 0; }'
+        : '#include <sys/inotify.h>
+int main() { int fd = inotify_init1(IN_NONBLOCK); return fd < 0; }'
+);
+
+print_status($probe{cxx20} ? 'OK' : 'ERROR', 'C++20 compiler support', $probe{cxx20} ? 'available' : 'no');
+print_status($probe{filesystem} ? 'OK' : 'ERROR', 'std::filesystem', $probe{filesystem} ? 'available' : 'no');
+print_status($probe{sockets} ? 'OK' : 'ERROR', 'TCP sockets', $probe{sockets} ? 'available' : 'no');
+print_status($probe{poll} ? 'OK' : 'ERROR', $^O eq 'MSWin32' ? 'poll loop backend' : 'poll(2)', $probe{poll} ? 'available' : 'no');
+print_status($probe{inotify} ? 'AVAIL' : 'SKIP', 'inotify', ($^O eq 'MSWin32' || !$probe{inotify}) ? 'not available' : 'available');
+
+if (!$probe{cxx20} || !$probe{filesystem} || !$probe{sockets} || !$probe{poll}) {
+    die "Required platform/compiler probes failed\n";
+}
+
+print_section('Generation');
+print_step('Generating version script');
+generate_version_script();
+
+print_step('Generating config header');
+my $config_tpl = catfile($base_path, 'make', 'config.h.tpl');
+my $config_dst = catfile($base_path, 'include', 'core', 'config.h');
+my $config_content = slurp_file($config_tpl);
+# Template substitution keeps hlog's generated files reproducible and lets the
+# configure CLI override the same values used by the runtime.
+for my $key (keys %vars) {
+    my $value = $vars{$key};
+    $config_content =~ s/\$\{$key\}/$value/g;
+}
+$config_content =~ s/\$\{HLOG_BASE_DIR\}/$base_path/g;
+write_file($config_dst, $config_content);
+print_success('Generated config header', $config_dst);
+
+print_step('Generating Makefile');
+my $make_tpl = catfile($base_path, 'make', 'makefile.tpl');
+my $make_dst = catfile($base_path, 'Makefile');
+my $make_content = slurp_file($make_tpl);
+for my $key (keys %vars) {
+    my $value = $vars{$key};
+    $make_content =~ s/\$\{$key\}/$value/g;
+}
+write_file($make_dst, $make_content);
+print_success('Generated Makefile', $make_dst);
+
+print_step('Generating hlog wrapper');
+generate_hlog_wrapper();
+
+print_step('Generating pipeline config');
+my $hlog_conf_tpl = catfile($base_path, 'make', 'hlog.conf.tpl');
+my $hlog_conf_dst = catfile($base_path, 'run', 'conf', 'hlog.conf');
+if (-e $hlog_conf_dst) {
+    print_success('Preserved pipeline config', $hlog_conf_dst);
+} else {
+    my $hlog_conf_content = slurp_file($hlog_conf_tpl);
+    # The generated runtime config is the single source of truth for input/output
+    # wiring, so every CLI override must be reflected here.
+    for my $key (keys %vars) {
+        my $value = $vars{$key};
+        $hlog_conf_content =~ s/\$\{$key\}/$value/g;
+    }
+    write_file($hlog_conf_dst, $hlog_conf_content);
+    print_success('Generated pipeline config', $hlog_conf_dst);
+}
+
+print_step('Generating modules config');
+my $modules_conf_tpl = catfile($base_path, 'make', 'modules.conf.tpl');
+my $modules_conf_dst = catfile($base_path, 'run', 'conf', 'modules.conf');
+if (-e $modules_conf_dst) {
+    print_success('Preserved modules config', $modules_conf_dst);
+} else {
+    my $modules_conf_content = slurp_file($modules_conf_tpl);
+    for my $key (keys %vars) {
+        my $value = $vars{$key};
+        $modules_conf_content =~ s/\$\{$key\}/$value/g;
+    }
+    write_file($modules_conf_dst, $modules_conf_content);
+    print_success('Generated modules config', $modules_conf_dst);
+}
+
+print_section('Runtime');
+create_required_directories();
+my $runtime_root = catdir($base_path, RUN_DIR);
+my $runtime_writable = check_runtime_writable(catdir($runtime_root, 'logs'));
+print_success('Config source', $vars{HLQUERY_CONFIG_DIR});
+print_success('Log source', $vars{HLQUERY_LOG_DIR});
+print_success('Local runtime', $runtime_root);
+print_status($runtime_writable ? 'OK' : 'ERROR', 'Runtime write test', $runtime_writable ? 'passed' : 'failed');
+
+if (!$runtime_writable) {
+    die "Cannot write to hlog runtime tree\n";
+}
+
+print_section('Summary');
+print_success('Binary output', catfile($base_path, 'build', 'bin', 'hlog'));
+print_success('Wrapper', catfile($base_path, 'run', 'hlog'));
+print_success('Run command', 'cd etc/hlog && ' . get_make_command());
+print_success('Pipeline config', catfile($base_path, 'run', 'conf', 'hlog.conf'));
+print_success('Modules config', catfile($base_path, 'run', 'conf', 'modules.conf'));
+print_success('Kernel watcher', $probe{inotify} ? 'inotify available' : 'poll fallback');
+print_success('Pipeline input', "$vars{HLOG_INPUT_PATH} ($vars{HLOG_INPUT_METHOD}/$vars{HLOG_INPUT_START})");
+print_success('Pipeline output', "$vars{HLOG_OUTPUT_COLLECTION} @ $vars{HLOG_OUTPUT_ENDPOINT}");
+print_success('Environment tag', $vars{HLOG_ENVIRONMENT});
+print_success('Include date', $vars{HLOG_INCLUDE_DATE});
+print_success('Include tags', $vars{HLOG_INCLUDE_TAGS});
+print_success('Timeout', $vars{HLOG_OUTPUT_TIMEOUT} . 's');
+
+my $bold_start = $ansi_supported ? BOLD : "";
+my $reset_end = $ansi_supported ? RESET : "";
+my $okgreen_start = $ansi_supported ? OKGREEN : "";
+my $bright_blue_start = $ansi_supported ? BRIGHT_BLUE : "";
+my $make_cmd = get_make_command();
+my $make_jobs = get_cpu_count();
+
+print "\n"
+    . $bold_start
+    . $okgreen_start
+    . "  Configuration Complete!"
+    . $reset_end
+    . "\n\n";
+
+print "  " . $char_map{'arrow'} . " " . $bold_start . $bright_blue_start . "Documentation:" . $reset_end . " https://docs.hlquery.com/\n";
+print "  " . $char_map{'arrow'} . " " . $bold_start . $bright_blue_start . "Issues:" . $reset_end . " https://github.com/hlquery/hlquery/issues\n";
+
+print_section('Next Steps');
+print "  " . $char_map{'asterisk'} . " To build the project, run:\n";
+print "    " . $bold_start . "$make_cmd -j$make_jobs" . $reset_end . "\n\n";
+print "  " . $char_map{'asterisk'} . " To install locally, run:\n";
+print "    " . $bold_start . "$make_cmd install" . $reset_end . "\n\n";

@@ -1,0 +1,13 @@
+build/
+Makefile
+include/core/config.h
+
+run/logs/*
+!run/logs/.gitkeep
+run/data/*
+!run/data/.gitkeep
+run/pid/*
+!run/pid/.gitkeep
+
+*.o
+*.log
