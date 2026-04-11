@@ -4,6 +4,10 @@ include/core/config.h
 
 run/logs/*
 !run/logs/.gitkeep
+run/bin/*
+!run/bin/.gitkeep
+run/modules/*
+!run/modules/.gitkeep
 run/data/*
 !run/data/.gitkeep
 run/pid/*
