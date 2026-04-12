@@ -11,9 +11,7 @@
 
 #pragma once
 
-#include <chrono>
 #include <cstdint>
-#include <ctime>
 #include <memory>
 
 #include "core/config.h"
@@ -21,6 +19,7 @@
 #include "core/logmanager.h"
 #include "core/types.h"
 #include "core/serverconfig.h"
+#include "core/clock.h"
 
 /* Global standalone application instance */
 

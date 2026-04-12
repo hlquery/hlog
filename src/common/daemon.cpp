@@ -209,48 +209,21 @@ void hlcore::Run()
 
 time_t hlcore::Time() const
 {
-     try
-     {
-          auto now = std::chrono::system_clock::now();
-          auto duration = now.time_since_epoch();
-          auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration);
-          return static_cast<time_t>(seconds.count());
-     }
-     catch (...)
-     {
-          return 0;
-     }
+     return ::Time();
 }
 
 /* Return the current wall-clock time in milliseconds. */
 
 long long hlcore::NowMs() const
 {
-     try
-     {
-          auto now = std::chrono::system_clock::now();
-          auto duration = now.time_since_epoch();
-          auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
-          return static_cast<long long>(milliseconds.count());
-     }
-     catch (...)
-     {
-          return 0;
-     }
+     return ::NowMs();
 }
 
 /* Return a steady clock point for interval measurements. */
 
 std::chrono::steady_clock::time_point hlcore::Now() const
 {
-     try
-     {
-          return std::chrono::steady_clock::now();
-     }
-     catch (...)
-     {
-          return std::chrono::steady_clock::time_point{};
-     }
+     return ::Now();
 }
 
 /* Bootstrap the default console logger used by standalone hlog. */

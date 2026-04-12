@@ -4,7 +4,7 @@
 
 <div align="center">
 
-**hlog: a modular data feeder for hlquery**
+**hlog: a modular data feeder for hlquery.**
 
 [![Twitter Follow](https://img.shields.io/twitter/url/https/x.com/hlquery.svg?style=social&label=Follow%20%40hlquery)](https://x.com/hlquery)
 [![Linux Build](https://github.com/hlquery/hlquery/workflows/Linux%20build/badge.svg)](https://github.com/hlquery/hlquery/actions)
