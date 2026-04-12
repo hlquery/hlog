@@ -218,6 +218,7 @@ sub print_startup_summary {
     my ($startup, $logfile) = @_;
     my $timestamp = strftime("%b/%d - %H:%M:%S", localtime());
 
+    print "\n";
     print_success("Starting hlog: [$timestamp]");
 
     if (defined $startup->{inputs}) {

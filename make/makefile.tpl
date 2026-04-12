@@ -6,6 +6,22 @@ endif
 
 .DEFAULT_GOAL := all
 
+ifeq ($(shell [ -t 1 ] && echo yes),yes)
+  RED     = \033[0;31m
+  YELLOW  = \033[0;33m
+  GREEN   = \033[0;32m
+  BLUE    = \033[1;34m
+  CYAN    = \033[0;36m
+  NC      = \033[0m
+else
+  RED     =
+  YELLOW  =
+  GREEN   =
+  BLUE    =
+  CYAN    =
+  NC      =
+endif
+
 CXX ?= ${CXX}
 CC ?= cc
 BUILD_DIR := build
@@ -51,6 +67,7 @@ endif
 
 TARGET := $(BIN_DIR)/hlog$(EXE_SUFFIX)
 MODULE_DIR := $(BUILD_DIR)/modules
+INSTALL ?= install
 
 CPPFLAGS := -Iinclude -Ivendor -I.
 CXXFLAGS := ${CXXFLAGS} -std=c++20 -O2 $(PIC_FLAG) -Wall -Wextra -Wformat=2 -Wformat-security -Wno-unused-parameter
@@ -93,8 +110,45 @@ modules: prepare $(MODULE_TARGETS)
 
 install: all
 	@mkdir -p $(RUN_DIR)/bin $(RUN_DIR)/modules
-	@cp "$(TARGET)" "$(RUN_DIR)/bin/"
-	@if [ -n "$(MODULE_TARGETS)" ]; then cp $(MODULE_TARGETS) "$(RUN_DIR)/modules/"; fi
+	@echo ""
+	@echo "Installing binaries to $(RUN_DIR)/bin/..."
+	@if [ ! -f "$(TARGET)" ]; then \
+		echo "$(RED) Error: Binary not found in $(BIN_DIR)/$(NC)"; \
+		echo "$(YELLOW)   [TIP] Please run 'make' first to build hlog.$(NC)"; \
+		echo ""; \
+		exit 1; \
+	fi
+	@$(INSTALL) -m 0755 "$(TARGET)" "$(RUN_DIR)/bin/hlog$(EXE_SUFFIX)"
+	@if [ -n "$(MODULE_TARGETS)" ]; then \
+		echo "$(BLUE)   Modules already staged in $(RUN_DIR)/modules; refreshing copies.$(NC)"; \
+		$(INSTALL) -m 0755 $(MODULE_TARGETS) "$(RUN_DIR)/modules/"; \
+	fi
+	@if [ -f "$(RUN_DIR)/hlog" ]; then \
+		echo "$(BLUE)   Wrapper: $(RUN_DIR)/hlog$(NC)"; \
+	fi
+	@echo "$(GREEN) Installation complete!$(NC)"
+	@echo "$(BLUE)   Binary:  $(RUN_DIR)/bin/hlog$(EXE_SUFFIX)$(NC)"
+	@if [ -d "$(RUN_DIR)/modules" ]; then \
+		echo "$(BLUE)   Modules: $(RUN_DIR)/modules$(NC)"; \
+	fi
+	@echo ""
+	@echo "$(CYAN)Quick help:$(NC)"
+	@echo "hlog - log pipeline"
+	@echo ""
+	@echo "To start hlog:"
+	@echo "  Run in foreground: ./run/hlog start --nofork"
+	@echo "  Run as daemon:     ./run/hlog start"
+	@echo ""
+	@echo "Useful commands:"
+	@echo "  ./run/hlog status"
+	@echo "  ./run/hlog stop"
+	@echo "  ./run/hlog test"
+	@echo ""
+	@echo "Installed paths:"
+	@echo "  Binary:  ./run/bin/hlog$(EXE_SUFFIX)"
+	@echo "  Wrapper: ./run/hlog"
+	@echo "  Modules: ./run/modules"
+	@echo ""
 
 $(MODULE_DIR)/%$(MODULE_SUFFIX): src/modules/%.cpp
 	@mkdir -p $(dir $@)
