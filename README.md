@@ -14,8 +14,6 @@
 [![GitHub stars](https://img.shields.io/github/stars/hlquery/hlquery?style=social)](https://github.com/hlquery/hlquery/stargazers)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
-[Documentation](https://docs.hlquery.com) • [GitHub](https://github.com/hlquery/hlquery/tree/unstable/etc/hlog) • [Discord](https://discord.hlquery.com)
-
 </div>
 
 ---

@@ -19,6 +19,18 @@
 
 hlcore *Instance = nullptr;
 
+/* Entry point for the standalone hlog application. */
+
+int main(int argc, char** argv)
+{
+     new hlcore(argc, argv);
+     Instance->Run();
+     delete Instance;
+     Instance = nullptr;
+
+     return 0;
+}
+
 /* Construct the standalone hlog core. */
 
 hlcore::hlcore(int argc, char** argv)
@@ -51,16 +63,4 @@ hlcore::hlcore(int argc, char** argv)
                Instance->Cleanup();
           }
      });
-}
-
-/* Entry point for the standalone hlog application. */
-
-int main(int argc, char** argv)
-{
-     new hlcore(argc, argv);
-     Instance->Run();
-     delete Instance;
-     Instance = nullptr;
-
-     return 0;
 }

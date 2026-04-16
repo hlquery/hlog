@@ -91,3 +91,5 @@ class CoreExport hlcore
 
      void EmitStartupLogs() const;
 };
+
+int main(int argc, char** argv);
