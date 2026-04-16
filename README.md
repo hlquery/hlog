@@ -6,19 +6,15 @@
 
 **hlog: a modular data feeder for hlquery.**
 
-[![Twitter Follow](https://img.shields.io/twitter/url/https/x.com/hlquery.svg?style=social&label=Follow%20%40hlquery)](https://x.com/hlquery)
-[![Linux Build](https://github.com/hlquery/hlquery/workflows/Linux%20build/badge.svg)](https://github.com/hlquery/hlquery/actions)
-[![macOS Build](https://github.com/hlquery/hlquery/workflows/macOS%20Build/badge.svg)](https://github.com/hlquery/hlquery/actions)
-[![FreeBSD Build](https://github.com/hlquery/hlquery/workflows/FreeBSD%20Build/badge.svg)](https://github.com/hlquery/hlquery/actions)
-[![Commit Activity](https://img.shields.io/github/commit-activity/m/hlquery/hlquery)](https://github.com/hlquery/hlquery/pulse)
-[![GitHub stars](https://img.shields.io/github/stars/hlquery/hlquery?style=social)](https://github.com/hlquery/hlquery/stargazers)
+[![Follow hlquery](https://img.shields.io/badge/Follow-%40hlquery-blue?logo=x&logoColor=white)](https://x.com/hlquery)
+[![Linux Build](https://github.com/hlquery/hlquery/workflows/Linux%20build/badge.svg)](https://github.com/hlquery/hlog/actions)
+[![macOS Build](https://github.com/hlquery/hlquery/workflows/macOS%20Build/badge.svg)](https://github.com/hlquery/hlog/actions)
+[![FreeBSD Build](https://github.com/hlquery/hlquery/workflows/FreeBSD%20Build/badge.svg)](https://github.com/hlquery/hlog/actions)
+[![Commit Activity](https://img.shields.io/github/commit-activity/m/hlquery/hlquery)](https://github.com/hlquery/hlog/pulse)
+[![hlquery](https://img.shields.io/badge/GitHub-hlquery-181717?logo=github&logoColor=white)](https://github.com/hlquery/hlquery/stargazers)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
 </div>
-
----
-
-> **Development Status**: `hlog` is currently in active development and should not be used in production environments. The software may contain bugs, incomplete features, and breaking changes may occur without notice.
 
 `hlog` is a lightweight C++ data feeder for hlquery. It ingests external data, transforms it in flight, and forwards structured events into an hlquery collection.
 
@@ -164,18 +160,6 @@ IRC bridge example:
 <module name="irc">
 ```
 
-```conf
-<irc_connect
-        server="irc.netchat.cl"
-        port="6667"
-        channel="#chile"
-        nick="blabla"
-        user="blabla"
-        realname="hlog irc bridge"
-        reconnect_ms="5000"
-        queue_limit="1000">
-```
-
 The IRC module is non-blocking relative to the main pipeline loop: it queues lines and sends them from a background worker thread with reconnect handling.
 
 Redis source example:
@@ -194,17 +178,3 @@ Redis source example:
         reconnect_ms="5000">
 ```
 
-The Redis module owns the source loop like `filein`: it subscribes to one Redis pub/sub channel, treats each published payload as one input line, and then relies on the normal `output_hlquery` batching path for timed collection flushes.
-
-Module entrypoints follow the same pattern as hlquery runtime modules, but with the smaller `HLogModule` ABI:
-
-```cpp
-class DebugModule final : public HLogModule
-{
-   public:
-     DebugModule() : HLogModule("debug") {}
-     void ProcessEvent(PipelineEvent& event, const FileState& state) override;
-};
-
-MODULE_LOAD(DebugModule)
-```
