@@ -720,7 +720,12 @@ my $reset_end = $ansi_supported ? RESET : "";
 my $okgreen_start = $ansi_supported ? OKGREEN : "";
 my $bright_blue_start = $ansi_supported ? BRIGHT_BLUE : "";
 my $make_cmd = get_make_command();
-my $make_jobs = get_cpu_count();
+my $make_jobs = get_cpu_count() || 1;
+my $build_cmd = $make_cmd;
+
+if ($make_jobs > 1) {
+    $build_cmd = "$make_cmd -j$make_jobs";
+}
 
 print "\n"
     . $bold_start
@@ -734,6 +739,6 @@ print "  " . $char_map{'arrow'} . " " . $bold_start . $bright_blue_start . "Issu
 
 print_section('Next Steps');
 print "  " . $char_map{'asterisk'} . " To build the project, run:\n";
-print "    " . $bold_start . "$make_cmd -j$make_jobs" . $reset_end . "\n\n";
+print "    " . $bold_start . $build_cmd . $reset_end . "\n\n";
 print "  " . $char_map{'asterisk'} . " To install locally, run:\n";
 print "    " . $bold_start . "$make_cmd install" . $reset_end . "\n\n";
