@@ -4,7 +4,7 @@
 
 <div align="center">
 
-**hlog: a modular data feeder for hlquery.**
+**hlog, a modular data feeder for hlquery.**
 
 [![Follow hlquery](https://img.shields.io/badge/Follow-%40hlquery-blue?logo=x&logoColor=white)](https://x.com/hlquery)
 [![Linux Build](https://github.com/hlquery/hlquery/workflows/Linux%20build/badge.svg)](https://github.com/hlquery/hlog/actions)
@@ -16,7 +16,7 @@
 
 </div>
 
-`hlog` is a lightweight C++ data feeder for hlquery. It ingests external data, transforms it in flight, and forwards structured events into an hlquery collection.
+hlog is a lightweight C++ data feeder for hlquery. It ingests external data, transforms it in flight, and forwards structured events into an hlquery collection.
 
 The design is intentionally modular so pipelines stay small, composable, and easy to adapt to different inputs, enrichment steps, and destinations.
 
