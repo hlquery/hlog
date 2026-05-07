@@ -6,6 +6,8 @@ endif
 
 .DEFAULT_GOAL := all
 
+CONFIGURE_COMMAND ?= ./configure
+
 ifeq ($(shell [ -t 1 ] && echo yes),yes)
   RED     = \033[0;31m
   YELLOW  = \033[0;33m
@@ -87,6 +89,9 @@ OBJECTS := $(LOCAL_CPP_OBJS)
 
 all: prepare $(TARGET) modules
 
+configure:
+	$(CONFIGURE_COMMAND)
+
 prepare:
 	@mkdir -p $(BIN_DIR) \
 		$(OBJ_DIR)/local \
@@ -161,4 +166,4 @@ $(OBJ_DIR)/local/%.o: src/%.cpp
 clean:
 	rm -rf $(BUILD_DIR)
 
-.PHONY: all prepare clean modules install
+.PHONY: all configure prepare clean modules install

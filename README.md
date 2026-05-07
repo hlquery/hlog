@@ -11,7 +11,7 @@
 [![macOS Build](https://github.com/hlquery/hlquery/workflows/macOS%20Build/badge.svg)](https://github.com/hlquery/hlog/actions)
 [![FreeBSD Build](https://github.com/hlquery/hlquery/workflows/FreeBSD%20Build/badge.svg)](https://github.com/hlquery/hlog/actions)
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/hlquery/hlquery)](https://github.com/hlquery/hlog/pulse)
-[![hlquery](https://img.shields.io/badge/GitHub-hlquery-181717?logo=github&logoColor=white)](https://github.com/hlquery/hlquery/stargazers)
+[![GitHub](https://img.shields.io/badge/GitHub-hlquery-blue?logo=github&logoColor=white)](https://github.com/hlquery/hlquery/stargazers)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
 </div>
@@ -30,10 +30,15 @@ $ make
 
 On macOS and the BSDs, use `gmake` instead of the platform `make`.
 
-Run:
+Run in foreground (for debugging):
 
 ```bash
-$ ./run/hlog start --nofork
+$ ./run/hlquery start --nofork
+```
+
+Status and stop:
+
+```bash
 $ ./run/hlog status
 $ ./run/hlog stop
 ```
