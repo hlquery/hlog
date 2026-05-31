@@ -31,8 +31,6 @@
 #include "core/serverconfig.h"
 #include "utils/tools.h"
 
-namespace
-{
 
 using TemplateAttributes = std::unordered_map<std::string, std::string>;
 
@@ -322,7 +320,6 @@ TemplateAttributes ResolveTemplateAttributes(const std::unordered_map<std::strin
      return merged;
 }
 
-}
 
 FailureRecorder::FailureRecorder(fs::path path)
     : Path(std::move(path))

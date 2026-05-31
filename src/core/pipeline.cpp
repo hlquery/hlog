@@ -43,8 +43,6 @@
 #include "core/modulemanager.h"
 #include "utils/tools.h"
 
-namespace
-{
 
 LogManager* GetPipelineLogger()
 {
@@ -486,7 +484,6 @@ class HlqueryHttpOutput
      std::vector<AddFieldFilterConfig> AddFieldFilters;
 };
 
-}
 
 class Pipeline::AsyncHlqueryOutput
 {

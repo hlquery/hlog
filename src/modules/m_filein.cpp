@@ -37,8 +37,6 @@
 #include "core/pipeline.h"
 #include "core/pipeline.h"
 
-namespace
-{
 
 /* Shared module run flag flipped by process signals. */
 
@@ -369,7 +367,6 @@ void RunPollLoop(std::vector<FileState>& states, const Pipeline& pipeline, int i
      }
 }
 
-}
 
 class FileInputModule final : public HLogModule
 {

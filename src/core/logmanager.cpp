@@ -21,8 +21,6 @@
 
 namespace fs = std::filesystem;
 
-namespace
-{
 
 std::string GetTimestamp(const char* format)
 {
@@ -49,7 +47,6 @@ std::string GetTimestamp(const char* format)
      return buffer;
 }
 
-}
 
 LogStream::LogStream(const LogConfig& config)
      : ConfigValue(config),

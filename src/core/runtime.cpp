@@ -26,8 +26,6 @@
 #include <unistd.h>
 #endif
 
-namespace
-{
 
 volatile std::sig_atomic_t Running = 1;
 
@@ -251,7 +249,6 @@ void RunPollLoop(std::vector<FileState>& states, const Pipeline& pipeline, int i
      }
 }
 
-}
 
 bool ReopenFile(FileState& state, bool initialOpen)
 {

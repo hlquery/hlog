@@ -34,8 +34,6 @@
 #include "core/socketengine.h"
 #include "utils/tools.h"
 
-namespace
-{
 
 /* Parsed pieces of the target hlquery HTTP endpoint. */
 
@@ -363,7 +361,6 @@ int ParseIntervalMilliseconds(const std::string& raw, int fallback)
      }
 }
 
-}
 
 /* IRC bridge module that forwards pipeline events and posts IRC activity. */
 

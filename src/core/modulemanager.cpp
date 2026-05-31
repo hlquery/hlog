@@ -27,8 +27,6 @@
 #include "core/hlcore.h"
 #include "core/logmanager.h"
 
-namespace
-{
 
 /* Send loader messages to the runtime logger or stderr fallback. */
 
@@ -140,7 +138,6 @@ std::string GetWindowsLoaderError()
 }
 #endif
 
-}
 
 /* Ensure all modules are unloaded when the module type is destroyed. */
 

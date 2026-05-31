@@ -28,8 +28,6 @@
 #include <unistd.h>
 #endif
 
-namespace
-{
 
 #ifdef _WIN32
 using NativeSocketHandle = SOCKET;
@@ -61,7 +59,6 @@ SocketEngine::SocketHandle ToStoredHandle(NativeSocketHandle handle)
 #endif
 }
 
-}
 
 /* Construct the socket engine with an initially closed handle. */
 

@@ -25,8 +25,6 @@
 #include "core/pipeline.h"
 #include "core/socketengine.h"
 
-namespace
-{
 
 /* Process-wide signal flag used by the Redis source loop. */
 
@@ -299,7 +297,6 @@ std::string BuildRespCommand(const std::vector<std::string>& parts)
      return payload;
 }
 
-}
 
 /* Redis-backed source module that forwards pub/sub messages into the pipeline. */
 
