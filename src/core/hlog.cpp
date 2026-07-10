@@ -12,7 +12,6 @@
 #include "core/exitmanager.h"
 #include "core/hlcore.h"
 #include "core/pipeline.h"
-#include "core/pipeline.h"
 #include "core/runtime.h"
 
 #include <iostream>
@@ -25,43 +24,52 @@ hlcore *Instance = nullptr;
 
 int main(int argc, char** argv)
 {
-     hlcore* core = nullptr;
+     bool instanceReady = false;
 
      try
      {
-          core = new hlcore(argc, argv);
-          core->Run();
-          delete core;
+          Instance = new hlcore(argc, argv);
+          instanceReady = true;
+          Instance->Run();
+          delete Instance;
           Instance = nullptr;
           return 0;
      }
      catch (const std::exception& ex)
      {
-          if (core && core->Logs)
+          if (instanceReady && Instance && Instance->Logs)
           {
-               core->Logs->Critical("startup", ex.what());
+               Instance->Logs->Critical("startup", ex.what());
           }
           else
           {
                std::cerr << "hlog: " << ex.what() << std::endl;
           }
 
-          delete core;
+          if (instanceReady)
+          {
+               delete Instance;
+          }
+
           Instance = nullptr;
           return 1;
      }
      catch (...)
      {
-          if (core && core->Logs)
+          if (instanceReady && Instance && Instance->Logs)
           {
-               core->Logs->Critical("startup", "unknown exception");
+               Instance->Logs->Critical("startup", "unknown exception");
           }
           else
           {
                std::cerr << "hlog: unknown exception" << std::endl;
           }
 
-          delete core;
+          if (instanceReady)
+          {
+               delete Instance;
+          }
+
           Instance = nullptr;
           return 1;
      }
