@@ -59,7 +59,13 @@ std::filesystem::path ResolveModulePath(const ModuleConfig& config)
 {
      if (!config.Path.empty())
      {
-          return std::filesystem::path(config.Path).lexically_normal();
+          std::filesystem::path configuredPath(config.Path);
+          if (configuredPath.is_absolute())
+          {
+               return configuredPath.lexically_normal();
+          }
+
+          return (std::filesystem::path(HLOG_BASE_DIR) / configuredPath).lexically_normal();
      }
 
      const std::string primarySuffix = HLOG_MODULE_SUFFIX;
@@ -168,8 +174,13 @@ bool HLogModuleManager::LoadModules(const PipelineConfig& config, std::string& e
                     {
                          it->Instance->Stop();
                     }
+                    catch (const std::exception& ex)
+                    {
+                         LogModuleMessage("critical", "Module '" + it->Name + "' threw during rollback Stop(): " + ex.what());
+                    }
                     catch (...)
                     {
+                         LogModuleMessage("critical", "Module '" + it->Name + "' threw during rollback Stop(): unknown exception");
                     }
                     it->Instance.reset();
                }
@@ -186,6 +197,8 @@ bool HLogModuleManager::LoadModules(const PipelineConfig& config, std::string& e
 
           stagedModules.clear();
      };
+
+     size_t sourceModuleCount = 0;
 
      for (const auto& moduleConfig : config.Modules)
      {
@@ -246,7 +259,34 @@ bool HLogModuleManager::LoadModules(const PipelineConfig& config, std::string& e
           }
 #endif
 
-          std::shared_ptr<HLogModule> module(createFn());
+          std::shared_ptr<HLogModule> module;
+          try
+          {
+               module.reset(createFn());
+          }
+          catch (const std::exception& ex)
+          {
+#ifdef _WIN32
+               FreeLibrary(static_cast<HMODULE>(handle));
+#else
+               dlclose(handle);
+#endif
+               errorMessage = "Module '" + moduleConfig.Name + "' threw during CreateHLogModule(): " + ex.what();
+               rollback();
+               return false;
+          }
+          catch (...)
+          {
+#ifdef _WIN32
+               FreeLibrary(static_cast<HMODULE>(handle));
+#else
+               dlclose(handle);
+#endif
+               errorMessage = "Module '" + moduleConfig.Name + "' threw during CreateHLogModule(): unknown exception";
+               rollback();
+               return false;
+          }
+
           if (!module)
           {
 #ifdef _WIN32
@@ -257,6 +297,23 @@ bool HLogModuleManager::LoadModules(const PipelineConfig& config, std::string& e
                errorMessage = "Module '" + moduleConfig.Name + "' returned a null module instance.";
                rollback();
                return false;
+          }
+
+          if (module->IsSourceModule())
+          {
+               ++sourceModuleCount;
+               if (sourceModuleCount > 1)
+               {
+                    module.reset();
+#ifdef _WIN32
+                    FreeLibrary(static_cast<HMODULE>(handle));
+#else
+                    dlclose(handle);
+#endif
+                    errorMessage = "Multiple hlog source modules are configured. Load only one source module at a time.";
+                    rollback();
+                    return false;
+               }
           }
 
           std::string startError;
@@ -285,6 +342,8 @@ bool HLogModuleManager::LoadModules(const PipelineConfig& config, std::string& e
                catch (...)
                {
                }
+
+               module.reset();
 
 #ifdef _WIN32
                FreeLibrary(static_cast<HMODULE>(handle));
@@ -364,10 +423,14 @@ void HLogModuleManager::ProcessEvent(PipelineEvent& event, const FileState& stat
           catch (const std::exception& ex)
           {
                LogModuleMessage("critical", "Module '" + module.Name + "' threw during ProcessEvent(): " + ex.what());
+               event.Dropped = true;
+               return;
           }
           catch (...)
           {
                LogModuleMessage("critical", "Module '" + module.Name + "' threw during ProcessEvent(): unknown exception");
+               event.Dropped = true;
+               return;
           }
 
           if (event.Dropped)

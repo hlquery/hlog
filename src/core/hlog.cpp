@@ -15,6 +15,8 @@
 #include "core/pipeline.h"
 #include "core/runtime.h"
 
+#include <iostream>
+
 /* Global standalone hlog instance. */
 
 hlcore *Instance = nullptr;
@@ -23,12 +25,46 @@ hlcore *Instance = nullptr;
 
 int main(int argc, char** argv)
 {
-     new hlcore(argc, argv);
-     Instance->Run();
-     delete Instance;
-     Instance = nullptr;
+     hlcore* core = nullptr;
 
-     return 0;
+     try
+     {
+          core = new hlcore(argc, argv);
+          core->Run();
+          delete core;
+          Instance = nullptr;
+          return 0;
+     }
+     catch (const std::exception& ex)
+     {
+          if (core && core->Logs)
+          {
+               core->Logs->Critical("startup", ex.what());
+          }
+          else
+          {
+               std::cerr << "hlog: " << ex.what() << std::endl;
+          }
+
+          delete core;
+          Instance = nullptr;
+          return 1;
+     }
+     catch (...)
+     {
+          if (core && core->Logs)
+          {
+               core->Logs->Critical("startup", "unknown exception");
+          }
+          else
+          {
+               std::cerr << "hlog: unknown exception" << std::endl;
+          }
+
+          delete core;
+          Instance = nullptr;
+          return 1;
+     }
 }
 
 /* Construct the standalone hlog core. */

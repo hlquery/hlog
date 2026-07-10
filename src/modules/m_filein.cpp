@@ -167,26 +167,28 @@ void DrainFile(FileState& state, const Pipeline& pipeline)
      state.Stream.seekg(static_cast<std::streamoff>(state.Offset), std::ios::beg);
 
      std::string chunk;
+     std::uintmax_t consumed = state.Offset;
      while (std::getline(state.Stream, chunk))
      {
+          if (state.Stream.eof())
+          {
+               state.Pending += chunk;
+               consumed = state.Size;
+               break;
+          }
+
           pipeline.ProcessLine(state, state.Pending + chunk);
           state.Pending.clear();
-     }
 
-     if (state.Stream.eof())
-     {
-          state.Stream.clear();
           const auto pos = state.Stream.tellg();
           if (pos != std::streampos(-1))
           {
-               state.Offset = static_cast<std::uintmax_t>(pos);
-          }
-
-          if (!chunk.empty() && state.Stream.fail())
-          {
-               state.Pending += chunk;
+               consumed = static_cast<std::uintmax_t>(pos);
           }
      }
+
+     state.Stream.clear();
+     state.Offset = consumed;
 }
 
 /* Detect file changes and resynchronize the stream before reading. */

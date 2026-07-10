@@ -11,6 +11,7 @@
 
 #include "core/pipeline.h"
 
+#include <algorithm>
 #include <cctype>
 #include <condition_variable>
 #include <cstdlib>
@@ -290,15 +291,48 @@ class HlqueryHttpOutput
           const std::string hostPort = slashPos == std::string::npos ? raw : raw.substr(0, slashPos);
           parsed.BasePath = slashPos == std::string::npos ? "" : raw.substr(slashPos);
 
-          const size_t colonPos = hostPort.rfind(':');
-          if (colonPos != std::string::npos)
+          if (hostPort.empty())
           {
-               parsed.Host = hostPort.substr(0, colonPos);
-               parsed.Port = std::stoi(hostPort.substr(colonPos + 1));
+               throw std::runtime_error("output_hlquery endpoint is missing a host");
+          }
+
+          if (hostPort.front() == '[')
+          {
+               const size_t closeBracket = hostPort.find(']');
+               if (closeBracket == std::string::npos)
+               {
+                    throw std::runtime_error("Invalid bracketed IPv6 host in output_hlquery endpoint");
+               }
+
+               parsed.Host = hostPort.substr(1, closeBracket - 1);
+               if (closeBracket + 1 < hostPort.size())
+               {
+                    if (hostPort[closeBracket + 1] != ':')
+                    {
+                         throw std::runtime_error("Invalid output_hlquery endpoint after IPv6 host");
+                    }
+
+                    parsed.Port = std::stoi(hostPort.substr(closeBracket + 2));
+               }
           }
           else
           {
-               parsed.Host = hostPort;
+               const size_t firstColon = hostPort.find(':');
+               const size_t lastColon = hostPort.rfind(':');
+               if (firstColon != std::string::npos && firstColon == lastColon)
+               {
+                    parsed.Host = hostPort.substr(0, firstColon);
+                    parsed.Port = std::stoi(hostPort.substr(firstColon + 1));
+               }
+               else
+               {
+                    parsed.Host = hostPort;
+               }
+          }
+
+          if (parsed.Host.empty() || parsed.Port <= 0 || parsed.Port > 65535)
+          {
+               throw std::runtime_error("Invalid output_hlquery endpoint");
           }
 
           return parsed;
@@ -378,10 +412,20 @@ class HlqueryHttpOutput
           request << "\r\n" << body;
 
           const std::string wire = request.str();
-          if (::send(sock, wire.c_str(), static_cast<int>(wire.size()), 0) < 0)
+          size_t sentTotal = 0;
+          while (sentTotal < wire.size())
           {
-               CloseSocket(sock);
-               throw std::runtime_error("Failed to send request to output_hlquery");
+               const size_t remaining = wire.size() - sentTotal;
+               const int chunkSize = static_cast<int>(std::min<size_t>(
+                    remaining, static_cast<size_t>(std::numeric_limits<int>::max())));
+               const int sent = ::send(sock, wire.data() + sentTotal, chunkSize, 0);
+               if (sent <= 0)
+               {
+                    CloseSocket(sock);
+                    throw std::runtime_error("Failed to send request to output_hlquery");
+               }
+
+               sentTotal += static_cast<size_t>(sent);
           }
 
           std::string response;

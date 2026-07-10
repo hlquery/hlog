@@ -325,7 +325,8 @@ void hlcore::EmitStartupLogs() const
      }
 
      Logs->Normal("pipeline", "mode=" + WatchModeToString(HLogEffectiveMode) +
-          " interval_ms=" + std::to_string(HLogPipeline->GetConfig().PollIntervalMs) + ".");
+          " interval_ms=" + std::to_string(HLogPipeline->GetConfig().PollIntervalMs) +
+          " inputs=" + std::to_string(CountResolvedInputs(HLogPipeline->GetConfig(), Config->GetOptions())) + ".");
      Logs->Normal("pipeline", "hlog_config=" + std::filesystem::absolute(Config->GetOptions().HLogConfigPath).string() + ".");
 
      if (HLogPipeline && HLogPipeline->GetConfig().HlqueryOutput.Enabled)

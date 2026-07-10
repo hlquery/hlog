@@ -146,12 +146,26 @@ bool ConfigReader::ParseAttributes(const std::string& text, const std::shared_pt
      auto begin = std::sregex_iterator(text.begin(), text.end(), attribute_pattern);
      auto end = std::sregex_iterator();
 
+     size_t consumed = 0;
+     auto only_whitespace = [](const std::string& value) {
+          return std::all_of(value.begin(), value.end(), [](unsigned char ch) {
+               return std::isspace(ch);
+          });
+     };
+
      for (auto it = begin; it != end; ++it)
      {
+          const auto match_pos = static_cast<size_t>(it->position());
+          if (match_pos > consumed && !only_whitespace(text.substr(consumed, match_pos - consumed)))
+          {
+               return false;
+          }
+
           tag->SetAttribute((*it)[1].str(), (*it)[2].str());
+          consumed = match_pos + static_cast<size_t>(it->length());
      }
 
-     return true;
+     return consumed >= text.size() || only_whitespace(text.substr(consumed));
 }
 
 std::string ConfigReader::TrimWhitespace(const std::string& text) const
