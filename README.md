@@ -7,7 +7,6 @@
 **hlog, a modular data feeder for hlquery.**
 
 [![Follow hlquery](https://img.shields.io/badge/Follow-%40hlquery-blue?logo=x&logoColor=white&labelColor=000000)](https://x.com/hlquery)
-
 [![GitHub](https://img.shields.io/badge/GitHub-hlog-blue?logo=github&logoColor=white&labelColor=000000)](https://github.com/hlquery/hlog/)
 [![Linux Build](https://img.shields.io/badge/Linux%20Build-passing-brightgreen?logo=linux&logoColor=white&labelColor=000000)](https://github.com/hlquery/hlog/actions)
 [![macOS Build](https://img.shields.io/badge/macOS%20Build-passing-brightgreen?logo=apple&logoColor=white&labelColor=000000)](https://github.com/hlquery/hlog/actions)
@@ -15,6 +14,8 @@
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-a35a0f?logo=open-source-initiative&logoColor=white&labelColor=000000)](https://opensource.org/licenses/BSD-3-Clause)
 
 </div>
+
+### What is hlog?
 
 hlog is a lightweight C++ data feeder for hlquery. It ingests external data, transforms it in flight, and forwards structured events into an hlquery collection.
 
